@@ -419,6 +419,56 @@ func TestPGErrorSQLState(t *testing.T) {
 	}
 }
 
+func TestDriverRegexOperators(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	_, err = db.Exec("INSERT INTO t VALUES (1, 'Alice'), (2, 'Bob'), (3, 'alex')")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	// ~ case sensitive: should match 'Alice' only (starts with A)
+	var count int
+	err = db.QueryRow("SELECT count(*) FROM t WHERE name ~ '^A'").Scan(&count)
+	if err != nil {
+		t.Fatalf("~ query: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("~ '^A' count = %d, want 1", count)
+	}
+
+	// ~* case insensitive: should match 'Alice' and 'alex'
+	err = db.QueryRow("SELECT count(*) FROM t WHERE name ~* '^a'").Scan(&count)
+	if err != nil {
+		t.Fatalf("~* query: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("~* '^a' count = %d, want 2", count)
+	}
+
+	// !~ negated case sensitive: should match 'Bob' and 'alex'
+	err = db.QueryRow("SELECT count(*) FROM t WHERE name !~ '^A'").Scan(&count)
+	if err != nil {
+		t.Fatalf("!~ query: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("!~ '^A' count = %d, want 2", count)
+	}
+
+	// !~* negated case insensitive: should match 'Bob' only
+	err = db.QueryRow("SELECT count(*) FROM t WHERE name !~* '^a'").Scan(&count)
+	if err != nil {
+		t.Fatalf("!~* query: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("!~* '^a' count = %d, want 1", count)
+	}
+}
+
 func TestDriverGroupConcat(t *testing.T) {
 	db := openTestDB(t)
 

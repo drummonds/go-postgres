@@ -5,12 +5,99 @@ import "strings"
 // translateExpressions handles expression-level translations:
 // ::cast, ILIKE, TRUE/FALSE literals, E'strings', IS TRUE/FALSE.
 func translateExpressions(tokens []Token) []Token {
+	tokens = translateRegexOps(tokens)
 	tokens = translateCast(tokens)
 	tokens = translateILIKE(tokens)
 	tokens = translateEscapeStrings(tokens)
 	tokens = translateIsTrueFalse(tokens)
 	tokens = translateBooleans(tokens)
 	return tokens
+}
+
+// translateRegexOps converts PG regex operators to pg_regex_match() calls.
+// expr ~ pattern   -> pg_regex_match(expr, pattern, 0)
+// expr ~* pattern  -> pg_regex_match(expr, pattern, 1)
+// expr !~ pattern  -> NOT pg_regex_match(expr, pattern, 0)
+// expr !~* pattern -> NOT pg_regex_match(expr, pattern, 1)
+func translateRegexOps(tokens []Token) []Token {
+	var out []Token
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i].Kind != TokOperator {
+			out = append(out, tokens[i])
+			continue
+		}
+
+		op := tokens[i].Value
+		var negated bool
+		var caseInsensitive int
+
+		switch op {
+		case "~":
+			// case sensitive match
+		case "~*":
+			caseInsensitive = 1
+		case "!~":
+			negated = true
+		case "!~*":
+			negated = true
+			caseInsensitive = 1
+		default:
+			out = append(out, tokens[i])
+			continue
+		}
+
+		// Extract the left-hand expression from out (skip trailing whitespace)
+		lhsEnd := len(out)
+		for lhsEnd > 0 && out[lhsEnd-1].Kind == TokWhitespace {
+			lhsEnd--
+		}
+		if lhsEnd == 0 {
+			out = append(out, tokens[i])
+			continue
+		}
+		lhsToken := out[lhsEnd-1]
+		out = out[:lhsEnd-1] // remove LHS and any whitespace after it
+		// Also remove whitespace before LHS position (between previous token and LHS)
+		// Keep the whitespace that was before the LHS
+		// Actually we removed trailing ws already, just remove the single LHS token
+
+		// Read the right-hand expression (skip whitespace, take next non-ws token)
+		j := i + 1
+		for j < len(tokens) && tokens[j].Kind == TokWhitespace {
+			j++
+		}
+		if j >= len(tokens) {
+			// Malformed, put everything back
+			out = append(out, lhsToken)
+			out = append(out, tokens[i])
+			continue
+		}
+		rhsToken := tokens[j]
+		i = j
+
+		// Emit: [NOT ]pg_regex_match(lhs, rhs, flag)
+		if negated {
+			out = append(out, Token{Kind: TokKeyword, Value: "NOT", Raw: "NOT"})
+			out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
+		}
+		flag := "0"
+		if caseInsensitive == 1 {
+			flag = "1"
+		}
+		out = append(out,
+			Token{Kind: TokIdent, Value: "pg_regex_match", Raw: "pg_regex_match"},
+			Token{Kind: TokParen, Value: "(", Raw: "("},
+			lhsToken,
+			Token{Kind: TokComma, Value: ",", Raw: ","},
+			Token{Kind: TokWhitespace, Value: " ", Raw: " "},
+			rhsToken,
+			Token{Kind: TokComma, Value: ",", Raw: ","},
+			Token{Kind: TokWhitespace, Value: " ", Raw: " "},
+			Token{Kind: TokNumber, Value: flag, Raw: flag},
+			Token{Kind: TokParen, Value: ")", Raw: ")"},
+		)
+	}
+	return out
 }
 
 // translateCast converts expr::type to CAST(expr AS mapped_type).

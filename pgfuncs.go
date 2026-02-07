@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"strings"
 
 	"modernc.org/sqlite"
@@ -58,6 +59,32 @@ func registerPGFunctions() {
 				return "", nil
 			}
 			return parts[idx], nil
+		},
+	)
+
+	// pg_regex_match(str, pattern, case_insensitive) -> 1 if matches, 0 otherwise
+	sqlite.MustRegisterDeterministicScalarFunction("pg_regex_match", 3,
+		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if args[0] == nil || args[1] == nil {
+				return int64(0), nil
+			}
+			str, ok1 := args[0].(string)
+			pattern, ok2 := args[1].(string)
+			if !ok1 || !ok2 {
+				return int64(0), nil
+			}
+			caseInsensitive, _ := args[2].(int64)
+			if caseInsensitive == 1 {
+				pattern = "(?i)" + pattern
+			}
+			matched, err := regexp.MatchString(pattern, str)
+			if err != nil {
+				return int64(0), nil
+			}
+			if matched {
+				return int64(1), nil
+			}
+			return int64(0), nil
 		},
 	)
 

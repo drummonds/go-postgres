@@ -308,6 +308,47 @@ func TestTranslateParams(t *testing.T) {
 	}
 }
 
+func TestTranslateRegexOps(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "~ case sensitive match",
+			input: "SELECT * FROM t WHERE name ~ '^foo'",
+			want:  "SELECT * FROM t WHERE pg_regex_match(name, '^foo', 0)",
+		},
+		{
+			name:  "~* case insensitive match",
+			input: "SELECT * FROM t WHERE name ~* '^foo'",
+			want:  "SELECT * FROM t WHERE pg_regex_match(name, '^foo', 1)",
+		},
+		{
+			name:  "!~ negated case sensitive",
+			input: "SELECT * FROM t WHERE name !~ '^foo'",
+			want:  "SELECT * FROM t WHERE NOT pg_regex_match(name, '^foo', 0)",
+		},
+		{
+			name:  "!~* negated case insensitive",
+			input: "SELECT * FROM t WHERE name !~* '^foo'",
+			want:  "SELECT * FROM t WHERE NOT pg_regex_match(name, '^foo', 1)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDollarQuotedStrings(t *testing.T) {
 	tests := []struct {
 		name  string
