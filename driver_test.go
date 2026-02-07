@@ -647,6 +647,40 @@ func TestDriverSimilarTo(t *testing.T) {
 	}
 }
 
+func TestDriverExplain(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t3 (id INTEGER PRIMARY KEY, name TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	// EXPLAIN should return rows (query plan output)
+	rows, err := db.Query("EXPLAIN SELECT * FROM t3 WHERE id = 1")
+	if err != nil {
+		t.Fatalf("EXPLAIN: %v", err)
+	}
+	defer rows.Close()
+
+	var rowCount int
+	for rows.Next() {
+		rowCount++
+		cols, _ := rows.Columns()
+		// Just verify we can scan the columns
+		vals := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+	}
+	if rowCount == 0 {
+		t.Error("EXPLAIN returned no rows")
+	}
+}
+
 func TestDriverGroupConcat(t *testing.T) {
 	db := openTestDB(t)
 

@@ -587,6 +587,47 @@ func TestTranslateSimilarTo(t *testing.T) {
 	}
 }
 
+func TestTranslateExplain(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "EXPLAIN SELECT",
+			input: "EXPLAIN SELECT * FROM t",
+			want:  "EXPLAIN QUERY PLAN SELECT * FROM t",
+		},
+		{
+			name:  "EXPLAIN ANALYZE SELECT",
+			input: "EXPLAIN ANALYZE SELECT * FROM t WHERE id = 1",
+			want:  "EXPLAIN QUERY PLAN SELECT * FROM t WHERE id = 1",
+		},
+		{
+			name:  "EXPLAIN VERBOSE SELECT",
+			input: "EXPLAIN VERBOSE SELECT * FROM t",
+			want:  "EXPLAIN QUERY PLAN SELECT * FROM t",
+		},
+		{
+			name:  "EXPLAIN ANALYZE VERBOSE SELECT",
+			input: "EXPLAIN ANALYZE VERBOSE SELECT * FROM t",
+			want:  "EXPLAIN QUERY PLAN SELECT * FROM t",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDollarQuotedStrings(t *testing.T) {
 	tests := []struct {
 		name  string

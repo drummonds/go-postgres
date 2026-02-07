@@ -365,6 +365,7 @@ func Reassemble(tokens []Token) string {
 // Translate converts PostgreSQL SQL to SQLite-compatible SQL.
 func Translate(sql string) (string, error) {
 	tokens := Tokenize(sql)
+	tokens = translateExplain(tokens)
 	tokens = translateGenerateSeries(tokens)
 	tokens = translateSequenceDDL(tokens)
 	tokens = translateInterval(tokens)
@@ -374,6 +375,44 @@ func Translate(sql string) (string, error) {
 	tokens = translateNullsOrdering(tokens)
 	tokens = translateParams(tokens)
 	return Reassemble(tokens), nil
+}
+
+// translateExplain rewrites EXPLAIN [ANALYZE] [VERBOSE] → EXPLAIN QUERY PLAN.
+func translateExplain(tokens []Token) []Token {
+	// Find first non-whitespace token
+	i := 0
+	for i < len(tokens) && tokens[i].Kind == TokWhitespace {
+		i++
+	}
+	if i >= len(tokens) || tokens[i].Kind != TokKeyword || tokens[i].Value != "EXPLAIN" {
+		return tokens
+	}
+
+	// Found EXPLAIN — skip over optional ANALYZE and VERBOSE
+	end := i + 1
+	for end < len(tokens) {
+		if tokens[end].Kind == TokWhitespace {
+			end++
+			continue
+		}
+		if tokens[end].Kind == TokKeyword && (tokens[end].Value == "ANALYZE" || tokens[end].Value == "VERBOSE") {
+			end++
+			continue
+		}
+		break
+	}
+
+	// Build replacement: EXPLAIN QUERY PLAN + remaining tokens
+	result := []Token{
+		{Kind: TokKeyword, Value: "EXPLAIN", Raw: "EXPLAIN"},
+		{Kind: TokWhitespace, Value: " ", Raw: " "},
+		{Kind: TokKeyword, Value: "QUERY", Raw: "QUERY"},
+		{Kind: TokWhitespace, Value: " ", Raw: " "},
+		{Kind: TokKeyword, Value: "PLAN", Raw: "PLAN"},
+		{Kind: TokWhitespace, Value: " ", Raw: " "},
+	}
+	result = append(result, tokens[end:]...)
+	return result
 }
 
 // tryDollarQuote checks if runes[i:] starts a dollar-quoted string ($$...$$ or $tag$...$tag$).
