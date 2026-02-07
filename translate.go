@@ -366,6 +366,7 @@ func Reassemble(tokens []Token) string {
 func Translate(sql string) (string, error) {
 	tokens := Tokenize(sql)
 	tokens = translateGenerateSeries(tokens)
+	tokens = translateSequenceDDL(tokens)
 	tokens = translateInterval(tokens)
 	tokens = translateDDL(tokens)
 	tokens = translateExpressions(tokens)

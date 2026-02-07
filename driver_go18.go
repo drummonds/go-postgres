@@ -42,6 +42,10 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err != nil {
 		return nil, err
 	}
+	translated, err = c.resolveSequenceCalls(translated)
+	if err != nil {
+		return nil, err
+	}
 	if preparer, ok := c.inner.(driver.ConnPrepareContext); ok {
 		s, err := preparer.PrepareContext(ctx, translated)
 		if err != nil {
@@ -55,6 +59,10 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 // ExecContext implements driver.ExecerContext.
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	translated, err := Translate(query)
+	if err != nil {
+		return nil, err
+	}
+	translated, err = c.resolveSequenceCalls(translated)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +86,10 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 // QueryContext implements driver.QueryerContext.
 func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	translated, err := Translate(query)
+	if err != nil {
+		return nil, err
+	}
+	translated, err = c.resolveSequenceCalls(translated)
 	if err != nil {
 		return nil, err
 	}

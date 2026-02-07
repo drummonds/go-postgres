@@ -469,6 +469,44 @@ func TestDriverRegexOperators(t *testing.T) {
 	}
 }
 
+func TestDriverSequences(t *testing.T) {
+	db := openTestDB(t)
+
+	// Create the _sequences table (driver should auto-create it)
+	_, err := db.Exec("CREATE SEQUENCE test_seq")
+	if err != nil {
+		t.Fatalf("CREATE SEQUENCE: %v", err)
+	}
+
+	// nextval should return incrementing values
+	var val1, val2 int64
+	err = db.QueryRow("SELECT nextval('test_seq')").Scan(&val1)
+	if err != nil {
+		t.Fatalf("nextval 1: %v", err)
+	}
+	err = db.QueryRow("SELECT nextval('test_seq')").Scan(&val2)
+	if err != nil {
+		t.Fatalf("nextval 2: %v", err)
+	}
+
+	if val1 != 1 {
+		t.Errorf("nextval 1 = %d, want 1", val1)
+	}
+	if val2 != 2 {
+		t.Errorf("nextval 2 = %d, want 2", val2)
+	}
+
+	// currval should return last value
+	var curr int64
+	err = db.QueryRow("SELECT currval('test_seq')").Scan(&curr)
+	if err != nil {
+		t.Fatalf("currval: %v", err)
+	}
+	if curr != 2 {
+		t.Errorf("currval = %d, want 2", curr)
+	}
+}
+
 func TestDriverGenerateSeries(t *testing.T) {
 	db := openTestDB(t)
 

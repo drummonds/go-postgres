@@ -349,6 +349,47 @@ func TestTranslateRegexOps(t *testing.T) {
 	}
 }
 
+func TestTranslateSequenceDDL(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "CREATE SEQUENCE basic",
+			input: "CREATE SEQUENCE my_seq",
+			want:  "INSERT OR IGNORE INTO _sequences (name, current_value, increment) VALUES ('my_seq', 0, 1)",
+		},
+		{
+			name:  "CREATE SEQUENCE with INCREMENT",
+			input: "CREATE SEQUENCE my_seq INCREMENT BY 5",
+			want:  "INSERT OR IGNORE INTO _sequences (name, current_value, increment) VALUES ('my_seq', 0, 5)",
+		},
+		{
+			name:  "CREATE SEQUENCE with START",
+			input: "CREATE SEQUENCE my_seq START WITH 100",
+			want:  "INSERT OR IGNORE INTO _sequences (name, current_value, increment) VALUES ('my_seq', 99, 1)",
+		},
+		{
+			name:  "DROP SEQUENCE",
+			input: "DROP SEQUENCE my_seq",
+			want:  "DELETE FROM _sequences WHERE name = 'my_seq'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateGenerateSeries(t *testing.T) {
 	tests := []struct {
 		name  string
