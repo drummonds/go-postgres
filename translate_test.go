@@ -349,6 +349,47 @@ func TestTranslateRegexOps(t *testing.T) {
 	}
 }
 
+func TestTranslateNullsOrdering(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "NULLS FIRST with ASC",
+			input: "SELECT * FROM t ORDER BY name ASC NULLS FIRST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN name IS NULL THEN 0 ELSE 1 END), name ASC",
+		},
+		{
+			name:  "NULLS LAST with ASC",
+			input: "SELECT * FROM t ORDER BY name ASC NULLS LAST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN name IS NULL THEN 1 ELSE 0 END), name ASC",
+		},
+		{
+			name:  "NULLS FIRST with DESC",
+			input: "SELECT * FROM t ORDER BY name DESC NULLS FIRST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN name IS NULL THEN 0 ELSE 1 END), name DESC",
+		},
+		{
+			name:  "NULLS LAST with no explicit direction",
+			input: "SELECT * FROM t ORDER BY name NULLS LAST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN name IS NULL THEN 1 ELSE 0 END), name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateSimilarTo(t *testing.T) {
 	tests := []struct {
 		name  string

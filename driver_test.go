@@ -469,6 +469,41 @@ func TestDriverRegexOperators(t *testing.T) {
 	}
 }
 
+func TestDriverNullsOrdering(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t2 (id INTEGER PRIMARY KEY, val TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	_, err = db.Exec("INSERT INTO t2 VALUES (1, 'a'), (2, NULL), (3, 'c')")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	// NULLS FIRST: NULL should come first
+	rows, err := db.Query("SELECT val FROM t2 ORDER BY val ASC NULLS FIRST")
+	if err != nil {
+		t.Fatalf("NULLS FIRST query: %v", err)
+	}
+	defer rows.Close()
+
+	var vals []sql.NullString
+	for rows.Next() {
+		var v sql.NullString
+		if err := rows.Scan(&v); err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		vals = append(vals, v)
+	}
+	if len(vals) != 3 {
+		t.Fatalf("got %d rows, want 3", len(vals))
+	}
+	if vals[0].Valid {
+		t.Errorf("first row should be NULL, got %q", vals[0].String)
+	}
+}
+
 func TestDriverSimilarTo(t *testing.T) {
 	db := openTestDB(t)
 

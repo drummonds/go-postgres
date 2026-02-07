@@ -368,6 +368,7 @@ func Translate(sql string) (string, error) {
 	tokens = translateDDL(tokens)
 	tokens = translateExpressions(tokens)
 	tokens = translateFunctions(tokens)
+	tokens = translateNullsOrdering(tokens)
 	tokens = translateParams(tokens)
 	return Reassemble(tokens), nil
 }
