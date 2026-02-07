@@ -101,7 +101,7 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	}
 	s, err := c.inner.Prepare(translated)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return &stmt{inner: s}, nil
 }
@@ -134,7 +134,7 @@ func (s *stmt) NumInput() int {
 func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 	r, err := s.inner.Exec(args) //nolint:staticcheck // implementing deprecated interface
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return &result{inner: r}, nil
 }
@@ -142,7 +142,7 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
 	r, err := s.inner.Query(args) //nolint:staticcheck // implementing deprecated interface
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 	return &rows{inner: r}, nil
 }

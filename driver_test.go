@@ -2,6 +2,7 @@ package pglike
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -326,6 +327,95 @@ func TestDriverDollarQuotedStrings(t *testing.T) {
 	}
 	if val != "it's a test" {
 		t.Errorf("val = %q, want \"it's a test\"", val)
+	}
+}
+
+func TestPGErrorUniqueViolation(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT UNIQUE)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	_, err = db.Exec("INSERT INTO t (id, name) VALUES (1, 'alice')")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	// Duplicate unique value should produce a PGError
+	_, err = db.Exec("INSERT INTO t (id, name) VALUES (2, 'alice')")
+	if err == nil {
+		t.Fatal("expected error on duplicate unique, got nil")
+	}
+
+	var pgErr *PGError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("expected PGError, got %T: %v", err, err)
+	}
+	if pgErr.Code != "23505" {
+		t.Errorf("error code = %q, want 23505 (unique_violation)", pgErr.Code)
+	}
+}
+
+func TestPGErrorNotNullViolation(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	_, err = db.Exec("INSERT INTO t (id, name) VALUES (1, NULL)")
+	if err == nil {
+		t.Fatal("expected error on NOT NULL violation, got nil")
+	}
+
+	var pgErr *PGError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("expected PGError, got %T: %v", err, err)
+	}
+	if pgErr.Code != "23502" {
+		t.Errorf("error code = %q, want 23502 (not_null_violation)", pgErr.Code)
+	}
+}
+
+func TestPGErrorUndefinedTable(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("SELECT * FROM nonexistent_table")
+	if err == nil {
+		t.Fatal("expected error on missing table, got nil")
+	}
+
+	var pgErr *PGError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("expected PGError, got %T: %v", err, err)
+	}
+	if pgErr.Code != "42P01" {
+		t.Errorf("error code = %q, want 42P01 (undefined_table)", pgErr.Code)
+	}
+}
+
+func TestPGErrorSQLState(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("INSERT INTO nonexistent (id) VALUES (1)")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var pgErr *PGError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("expected PGError, got %T: %v", err, err)
+	}
+	// Should have a non-empty code
+	if pgErr.SQLState() == "" {
+		t.Error("SQLState() returned empty string")
+	}
+	// Error() should include the message
+	if pgErr.Error() == "" {
+		t.Error("Error() returned empty string")
 	}
 }
 

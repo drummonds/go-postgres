@@ -45,7 +45,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if preparer, ok := c.inner.(driver.ConnPrepareContext); ok {
 		s, err := preparer.PrepareContext(ctx, translated)
 		if err != nil {
-			return nil, err
+			return nil, wrapError(err)
 		}
 		return &stmt{inner: s}, nil
 	}
@@ -61,7 +61,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	if execer, ok := c.inner.(driver.ExecerContext); ok {
 		r, err := execer.ExecContext(ctx, translated, args)
 		if err != nil {
-			return nil, err
+			return nil, wrapError(err)
 		}
 		return &result{inner: r}, nil
 	}
@@ -84,7 +84,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	if queryer, ok := c.inner.(driver.QueryerContext); ok {
 		r, err := queryer.QueryContext(ctx, translated, args)
 		if err != nil {
-			return nil, err
+			return nil, wrapError(err)
 		}
 		return &rows{inner: r}, nil
 	}
@@ -103,7 +103,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if execer, ok := s.inner.(driver.StmtExecContext); ok {
 		r, err := execer.ExecContext(ctx, args)
 		if err != nil {
-			return nil, err
+			return nil, wrapError(err)
 		}
 		return &result{inner: r}, nil
 	}
@@ -116,7 +116,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	if queryer, ok := s.inner.(driver.StmtQueryContext); ok {
 		r, err := queryer.QueryContext(ctx, args)
 		if err != nil {
-			return nil, err
+			return nil, wrapError(err)
 		}
 		return &rows{inner: r}, nil
 	}
