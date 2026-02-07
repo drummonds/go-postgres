@@ -1,0 +1,29 @@
+version: "3"
+
+tasks:
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -count=1 ./...
+
+  build:
+    desc: Build all packages
+    cmds:
+      - go build ./...
+
+  release:
+    desc: "Create a GitHub release (usage: task release VERSION=v0.1.0 COMMENT='Initial release')"
+    requires:
+      vars:
+        - VERSION
+        - COMMENT
+    preconditions:
+      - sh: git diff --quiet
+        msg: "Working tree is dirty — commit or stash changes first"
+      - sh: git diff --cached --quiet
+        msg: "Staged changes exist — commit or stash them first"
+    cmds:
+      - go test -count=1 ./...
+      - git tag {{.VERSION}} -m "{{.COMMENT}}"
+      - git push origin {{.VERSION}}
+      - gh release create {{.VERSION}} --title "{{.VERSION}}" --notes "{{.COMMENT}}"
