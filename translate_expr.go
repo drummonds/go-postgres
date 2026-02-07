@@ -6,6 +6,7 @@ import "strings"
 // ::cast, ILIKE, TRUE/FALSE literals, E'strings', IS TRUE/FALSE.
 func translateExpressions(tokens []Token) []Token {
 	tokens = translateRegexOps(tokens)
+	tokens = translateSimilarTo(tokens)
 	tokens = translateCast(tokens)
 	tokens = translateILIKE(tokens)
 	tokens = translateEscapeStrings(tokens)
@@ -94,6 +95,79 @@ func translateRegexOps(tokens []Token) []Token {
 			Token{Kind: TokComma, Value: ",", Raw: ","},
 			Token{Kind: TokWhitespace, Value: " ", Raw: " "},
 			Token{Kind: TokNumber, Value: flag, Raw: flag},
+			Token{Kind: TokParen, Value: ")", Raw: ")"},
+		)
+	}
+	return out
+}
+
+// translateSimilarTo converts [NOT] SIMILAR TO pattern -> [NOT ]pg_similar_match(expr, pattern).
+func translateSimilarTo(tokens []Token) []Token {
+	var out []Token
+	for i := 0; i < len(tokens); i++ {
+		// Look for SIMILAR keyword
+		if tokens[i].Kind != TokKeyword || tokens[i].Value != "SIMILAR" {
+			out = append(out, tokens[i])
+			continue
+		}
+
+		// Look ahead for TO
+		j := i + 1
+		for j < len(tokens) && tokens[j].Kind == TokWhitespace {
+			j++
+		}
+		if j >= len(tokens) || tokens[j].Kind != TokKeyword || tokens[j].Value != "TO" {
+			out = append(out, tokens[i])
+			continue
+		}
+
+		// Check for NOT before SIMILAR (already in out)
+		negated := false
+		lhsEnd := len(out)
+		for lhsEnd > 0 && out[lhsEnd-1].Kind == TokWhitespace {
+			lhsEnd--
+		}
+		if lhsEnd > 0 && out[lhsEnd-1].Kind == TokKeyword && out[lhsEnd-1].Value == "NOT" {
+			negated = true
+			lhsEnd--
+			// Remove whitespace before NOT too
+			for lhsEnd > 0 && out[lhsEnd-1].Kind == TokWhitespace {
+				lhsEnd--
+			}
+		}
+
+		// Get the expression before [NOT] SIMILAR (should be an ident/value)
+		if lhsEnd == 0 {
+			out = append(out, tokens[i])
+			continue
+		}
+		lhsToken := out[lhsEnd-1]
+		out = out[:lhsEnd-1]
+
+		// Read pattern after TO
+		k := j + 1
+		for k < len(tokens) && tokens[k].Kind == TokWhitespace {
+			k++
+		}
+		if k >= len(tokens) {
+			out = append(out, lhsToken, tokens[i])
+			continue
+		}
+		patternToken := tokens[k]
+		i = k
+
+		// Emit: [NOT ]pg_similar_match(expr, pattern)
+		if negated {
+			out = append(out, Token{Kind: TokKeyword, Value: "NOT", Raw: "NOT"})
+			out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
+		}
+		out = append(out,
+			Token{Kind: TokIdent, Value: "pg_similar_match", Raw: "pg_similar_match"},
+			Token{Kind: TokParen, Value: "(", Raw: "("},
+			lhsToken,
+			Token{Kind: TokComma, Value: ",", Raw: ","},
+			Token{Kind: TokWhitespace, Value: " ", Raw: " "},
+			patternToken,
 			Token{Kind: TokParen, Value: ")", Raw: ")"},
 		)
 	}

@@ -88,6 +88,30 @@ func registerPGFunctions() {
 		},
 	)
 
+	// pg_similar_match(str, pattern) -> 1 if matches SQL SIMILAR TO pattern, 0 otherwise
+	// SIMILAR TO patterns use: % (any string), _ (any char), | (alternation), () (grouping)
+	sqlite.MustRegisterDeterministicScalarFunction("pg_similar_match", 2,
+		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if args[0] == nil || args[1] == nil {
+				return int64(0), nil
+			}
+			str, ok1 := args[0].(string)
+			pattern, ok2 := args[1].(string)
+			if !ok1 || !ok2 {
+				return int64(0), nil
+			}
+			re := convertSimilarToRegex(pattern)
+			matched, err := regexp.MatchString(re, str)
+			if err != nil {
+				return int64(0), nil
+			}
+			if matched {
+				return int64(1), nil
+			}
+			return int64(0), nil
+		},
+	)
+
 	// pg_typeof(expr) -> type name as string
 	sqlite.MustRegisterScalarFunction("pg_typeof", 1,
 		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
@@ -107,6 +131,30 @@ func registerPGFunctions() {
 			}
 		},
 	)
+}
+
+// convertSimilarToRegex converts a SQL SIMILAR TO pattern to a Go regex.
+// SIMILAR TO uses: % (any string), _ (any char), | (alternation), () (grouping).
+func convertSimilarToRegex(pattern string) string {
+	var b strings.Builder
+	b.WriteString("^")
+	for _, ch := range pattern {
+		switch ch {
+		case '%':
+			b.WriteString(".*")
+		case '_':
+			b.WriteString(".")
+		case '|', '(', ')':
+			b.WriteRune(ch)
+		case '.', '^', '$', '+', '?', '{', '}', '[', ']', '\\', '*':
+			b.WriteRune('\\')
+			b.WriteRune(ch)
+		default:
+			b.WriteRune(ch)
+		}
+	}
+	b.WriteString("$")
+	return b.String()
 }
 
 // generateUUIDv4 generates a random UUID v4 string.

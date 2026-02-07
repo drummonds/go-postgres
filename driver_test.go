@@ -469,6 +469,38 @@ func TestDriverRegexOperators(t *testing.T) {
 	}
 }
 
+func TestDriverSimilarTo(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	_, err = db.Exec("INSERT INTO t VALUES (1, 'foo'), (2, 'bar'), (3, 'baz'), (4, 'qux')")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	// SIMILAR TO with alternation
+	var count int
+	err = db.QueryRow("SELECT count(*) FROM t WHERE name SIMILAR TO '%(foo|bar)%'").Scan(&count)
+	if err != nil {
+		t.Fatalf("SIMILAR TO: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("SIMILAR TO count = %d, want 2", count)
+	}
+
+	// NOT SIMILAR TO
+	err = db.QueryRow("SELECT count(*) FROM t WHERE name NOT SIMILAR TO '%(foo|bar)%'").Scan(&count)
+	if err != nil {
+		t.Fatalf("NOT SIMILAR TO: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("NOT SIMILAR TO count = %d, want 2", count)
+	}
+}
+
 func TestDriverGroupConcat(t *testing.T) {
 	db := openTestDB(t)
 

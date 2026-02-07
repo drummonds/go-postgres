@@ -349,6 +349,37 @@ func TestTranslateRegexOps(t *testing.T) {
 	}
 }
 
+func TestTranslateSimilarTo(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "SIMILAR TO",
+			input: "SELECT * FROM t WHERE name SIMILAR TO '%(foo|bar)%'",
+			want:  "SELECT * FROM t WHERE pg_similar_match(name, '%(foo|bar)%')",
+		},
+		{
+			name:  "NOT SIMILAR TO",
+			input: "SELECT * FROM t WHERE name NOT SIMILAR TO '%test%'",
+			want:  "SELECT * FROM t WHERE NOT pg_similar_match(name, '%test%')",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDollarQuotedStrings(t *testing.T) {
 	tests := []struct {
 		name  string
