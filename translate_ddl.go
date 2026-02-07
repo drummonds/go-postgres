@@ -71,7 +71,6 @@ var pgTypeToSQLite = map[string]string{
 	"BIGINT":    "INTEGER",
 	"FLOAT4":    "REAL",
 	"FLOAT8":    "REAL",
-	"INTERVAL":  "TEXT",
 }
 
 // MapType maps a PostgreSQL type name to its SQLite equivalent.
@@ -158,6 +157,11 @@ func translateTypes(tokens []Token) []Token {
 					}
 				}
 			}
+			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			continue
+
+		case "INTERVAL":
+			// INTERVAL -> TEXT (column type only; arithmetic INTERVAL handled by translateInterval)
 			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
 			continue
 

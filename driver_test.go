@@ -469,6 +469,29 @@ func TestDriverRegexOperators(t *testing.T) {
 	}
 }
 
+func TestDriverInterval(t *testing.T) {
+	db := openTestDB(t)
+
+	// INTERVAL addition
+	var result string
+	err := db.QueryRow("SELECT '2024-01-15 10:00:00' + INTERVAL '1 day'").Scan(&result)
+	if err != nil {
+		t.Fatalf("INTERVAL +: %v", err)
+	}
+	if result != "2024-01-16 10:00:00" {
+		t.Errorf("+ INTERVAL '1 day' = %q, want '2024-01-16 10:00:00'", result)
+	}
+
+	// INTERVAL subtraction
+	err = db.QueryRow("SELECT '2024-01-15 10:00:00' - INTERVAL '2 hours'").Scan(&result)
+	if err != nil {
+		t.Fatalf("INTERVAL -: %v", err)
+	}
+	if result != "2024-01-15 08:00:00" {
+		t.Errorf("- INTERVAL '2 hours' = %q, want '2024-01-15 08:00:00'", result)
+	}
+}
+
 func TestDriverToChar(t *testing.T) {
 	db := openTestDB(t)
 

@@ -349,6 +349,49 @@ func TestTranslateRegexOps(t *testing.T) {
 	}
 }
 
+func TestTranslateInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "NOW() + INTERVAL '1 day'",
+			input: "SELECT NOW() + INTERVAL '1 day'",
+			want:  "SELECT datetime(datetime('now'), '+1 day')",
+		},
+		// Note: translateInterval runs before translateFunctions in the pipeline,
+		// so NOW() inside datetime() gets translated by translateNow afterward.
+		{
+			name:  "ts - INTERVAL '2 hours'",
+			input: "SELECT ts - INTERVAL '2 hours' FROM t",
+			want:  "SELECT datetime(ts, '-2 hours') FROM t",
+		},
+		{
+			name:  "INTERVAL '30 minutes'",
+			input: "SELECT ts + INTERVAL '30 minutes' FROM t",
+			want:  "SELECT datetime(ts, '+30 minutes') FROM t",
+		},
+		{
+			name:  "INTERVAL '1' DAY syntax",
+			input: "SELECT ts + INTERVAL '1' DAY FROM t",
+			want:  "SELECT datetime(ts, '+1 day') FROM t",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateToChar(t *testing.T) {
 	tests := []struct {
 		name  string
