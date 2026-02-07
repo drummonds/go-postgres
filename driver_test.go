@@ -469,6 +469,33 @@ func TestDriverRegexOperators(t *testing.T) {
 	}
 }
 
+func TestDriverGenerateSeries(t *testing.T) {
+	db := openTestDB(t)
+
+	rows, err := db.Query("SELECT * FROM generate_series(1, 5)")
+	if err != nil {
+		t.Fatalf("generate_series: %v", err)
+	}
+	defer rows.Close()
+
+	var vals []int64
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		vals = append(vals, v)
+	}
+	if len(vals) != 5 {
+		t.Fatalf("got %d rows, want 5: %v", len(vals), vals)
+	}
+	for i, v := range vals {
+		if v != int64(i+1) {
+			t.Errorf("row %d = %d, want %d", i, v, i+1)
+		}
+	}
+}
+
 func TestDriverInterval(t *testing.T) {
 	db := openTestDB(t)
 

@@ -349,6 +349,42 @@ func TestTranslateRegexOps(t *testing.T) {
 	}
 }
 
+func TestTranslateGenerateSeries(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "simple generate_series",
+			input: "SELECT * FROM generate_series(1, 5)",
+			want:  "WITH RECURSIVE _gs(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM _gs WHERE value + 1 <= 5) SELECT * FROM _gs",
+		},
+		{
+			name:  "generate_series with step",
+			input: "SELECT * FROM generate_series(0, 10, 2)",
+			want:  "WITH RECURSIVE _gs(value) AS (SELECT 0 UNION ALL SELECT value + 2 FROM _gs WHERE value + 2 <= 10) SELECT * FROM _gs",
+		},
+		{
+			name:  "generate_series with alias",
+			input: "SELECT s FROM generate_series(1, 3) AS s",
+			want:  "WITH RECURSIVE _gs(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM _gs WHERE value + 1 <= 3) SELECT s FROM _gs AS s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateInterval(t *testing.T) {
 	tests := []struct {
 		name  string

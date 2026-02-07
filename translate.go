@@ -365,6 +365,7 @@ func Reassemble(tokens []Token) string {
 // Translate converts PostgreSQL SQL to SQLite-compatible SQL.
 func Translate(sql string) (string, error) {
 	tokens := Tokenize(sql)
+	tokens = translateGenerateSeries(tokens)
 	tokens = translateInterval(tokens)
 	tokens = translateDDL(tokens)
 	tokens = translateExpressions(tokens)
