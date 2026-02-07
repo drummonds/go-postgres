@@ -287,19 +287,30 @@ func skipParenGroup(tokens []Token, start int) int {
 	return start - 1 // no paren, don't skip anything
 }
 
-// translateDefaultNow converts DEFAULT NOW() to DEFAULT (datetime('now')).
+// translateDefaultNow converts DEFAULT NOW() and DEFAULT CURRENT_TIMESTAMP/CURRENT_DATE/CURRENT_TIME
+// to DEFAULT (datetime('now')), DEFAULT (date('now')), or DEFAULT (time('now')).
+// SQLite requires function calls in DEFAULT clauses to be wrapped in parentheses.
 func translateDefaultNow(tokens []Token) []Token {
+	// Map of CURRENT_* keywords to their SQLite function equivalents.
+	currentFuncMap := map[string]string{
+		"CURRENT_TIMESTAMP": "datetime",
+		"CURRENT_DATE":      "date",
+		"CURRENT_TIME":      "time",
+	}
+
 	var out []Token
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
 
 		if t.Kind == TokKeyword && t.Value == "DEFAULT" {
 			out = append(out, t)
-			// Look ahead for NOW()
+			// Look ahead past whitespace
 			j := i + 1
 			for j < len(tokens) && tokens[j].Kind == TokWhitespace {
 				j++
 			}
+
+			// Check for NOW()
 			if j < len(tokens) && tokens[j].Kind == TokKeyword && tokens[j].Value == "NOW" {
 				k := j + 1
 				for k < len(tokens) && tokens[k].Kind == TokWhitespace {
@@ -311,8 +322,6 @@ func translateDefaultNow(tokens []Token) []Token {
 						l++
 					}
 					if l < len(tokens) && tokens[l].Kind == TokParen && tokens[l].Value == ")" {
-						// Replace DEFAULT NOW() with DEFAULT (datetime('now'))
-						// Emit one space then the replacement
 						out = append(out,
 							Token{Kind: TokWhitespace, Value: " ", Raw: " "},
 							Token{Kind: TokParen, Value: "(", Raw: "("},
@@ -327,7 +336,25 @@ func translateDefaultNow(tokens []Token) []Token {
 					}
 				}
 			}
-			// Not NOW(), just pass through DEFAULT (don't duplicate whitespace)
+
+			// Check for CURRENT_TIMESTAMP, CURRENT_DATE, CURRENT_TIME
+			if j < len(tokens) && tokens[j].Kind == TokKeyword {
+				if funcName, ok := currentFuncMap[tokens[j].Value]; ok {
+					out = append(out,
+						Token{Kind: TokWhitespace, Value: " ", Raw: " "},
+						Token{Kind: TokParen, Value: "(", Raw: "("},
+						Token{Kind: TokIdent, Value: funcName, Raw: funcName},
+						Token{Kind: TokParen, Value: "(", Raw: "("},
+						Token{Kind: TokString, Value: "'now'", Raw: "'now'"},
+						Token{Kind: TokParen, Value: ")", Raw: ")"},
+						Token{Kind: TokParen, Value: ")", Raw: ")"},
+					)
+					i = j
+					continue
+				}
+			}
+
+			// Not a recognized datetime default, just pass through DEFAULT
 			continue
 		}
 		out = append(out, t)

@@ -111,6 +111,21 @@ func TestTranslateDDL(t *testing.T) {
 			want:  "CREATE TABLE t (created_at TEXT DEFAULT (datetime('now')))",
 		},
 		{
+			name:  "DEFAULT CURRENT_TIMESTAMP",
+			input: "CREATE TABLE t (created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+			want:  "CREATE TABLE t (created_at TEXT DEFAULT (datetime('now')))",
+		},
+		{
+			name:  "DEFAULT CURRENT_DATE",
+			input: "CREATE TABLE t (created_at DATE DEFAULT CURRENT_DATE)",
+			want:  "CREATE TABLE t (created_at TEXT DEFAULT (date('now')))",
+		},
+		{
+			name:  "DEFAULT CURRENT_TIME",
+			input: "CREATE TABLE t (created_at TIME DEFAULT CURRENT_TIME)",
+			want:  "CREATE TABLE t (created_at TEXT DEFAULT (time('now')))",
+		},
+		{
 			name:  "complex table",
 			input: "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, email VARCHAR(255) UNIQUE, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW())",
 			want:  "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')))",
