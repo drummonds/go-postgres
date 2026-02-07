@@ -11,8 +11,9 @@ func translateDDL(tokens []Token) []Token {
 }
 
 // translateSerial replaces SERIAL/BIGSERIAL/SMALLSERIAL with INTEGER PRIMARY KEY AUTOINCREMENT.
-// It detects "colname SERIAL [PRIMARY KEY]" and normalizes to
-// "colname INTEGER PRIMARY KEY AUTOINCREMENT".
+// It detects "colname SERIAL ... [PRIMARY KEY]" and normalizes to
+// "colname INTEGER PRIMARY KEY AUTOINCREMENT ...", stripping any PRIMARY KEY
+// (and preceding CONSTRAINT name) that appears later in the column definition.
 func translateSerial(tokens []Token) []Token {
 	var out []Token
 	for i := 0; i < len(tokens); i++ {
@@ -27,23 +28,72 @@ func translateSerial(tokens []Token) []Token {
 			out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
 			out = append(out, Token{Kind: TokKeyword, Value: "AUTOINCREMENT", Raw: "AUTOINCREMENT"})
 
-			// If PRIMARY KEY follows, skip past it to avoid duplication
+			// Collect remaining tokens in this column definition (up to , or ))
+			// and strip out [CONSTRAINT name] PRIMARY KEY to avoid duplication.
+			var rest []Token
+			j := i + 1
+			for j < len(tokens) && tokens[j].Kind != TokComma && !(tokens[j].Kind == TokParen && tokens[j].Value == ")") {
+				rest = append(rest, tokens[j])
+				j++
+			}
+			rest = stripPrimaryKey(rest)
+			// Remove trailing whitespace from rest so we don't get extra spaces before , or )
+			for len(rest) > 0 && rest[len(rest)-1].Kind == TokWhitespace {
+				rest = rest[:len(rest)-1]
+			}
+			out = append(out, rest...)
+			i = j - 1 // loop will i++ to j
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// stripPrimaryKey removes PRIMARY KEY (and any preceding CONSTRAINT name) from a token slice.
+func stripPrimaryKey(tokens []Token) []Token {
+	var out []Token
+	for i := 0; i < len(tokens); i++ {
+		// Check for CONSTRAINT <name> PRIMARY KEY
+		if tokens[i].Kind == TokKeyword && tokens[i].Value == "CONSTRAINT" {
+			// Look ahead: whitespace, name, whitespace, PRIMARY, whitespace, KEY
 			j := i + 1
 			for j < len(tokens) && tokens[j].Kind == TokWhitespace {
 				j++
 			}
-			if j < len(tokens) && tokens[j].Kind == TokKeyword && tokens[j].Value == "PRIMARY" {
+			if j < len(tokens) && (tokens[j].Kind == TokIdent || tokens[j].Kind == TokKeyword) {
 				k := j + 1
 				for k < len(tokens) && tokens[k].Kind == TokWhitespace {
 					k++
 				}
-				if k < len(tokens) && tokens[k].Kind == TokKeyword && tokens[k].Value == "KEY" {
-					i = k
+				if k < len(tokens) && tokens[k].Kind == TokKeyword && tokens[k].Value == "PRIMARY" {
+					l := k + 1
+					for l < len(tokens) && tokens[l].Kind == TokWhitespace {
+						l++
+					}
+					if l < len(tokens) && tokens[l].Kind == TokKeyword && tokens[l].Value == "KEY" {
+						// Skip preceding whitespace, CONSTRAINT name PRIMARY KEY
+						i = l
+						continue
+					}
 				}
 			}
+			out = append(out, tokens[i])
 			continue
 		}
-		out = append(out, t)
+		// Check for bare PRIMARY KEY
+		if tokens[i].Kind == TokKeyword && tokens[i].Value == "PRIMARY" {
+			j := i + 1
+			for j < len(tokens) && tokens[j].Kind == TokWhitespace {
+				j++
+			}
+			if j < len(tokens) && tokens[j].Kind == TokKeyword && tokens[j].Value == "KEY" {
+				// Skip preceding whitespace and PRIMARY KEY
+				i = j
+				continue
+			}
+		}
+		out = append(out, tokens[i])
 	}
 	return out
 }
