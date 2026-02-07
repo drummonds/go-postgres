@@ -349,6 +349,52 @@ func TestTranslateRegexOps(t *testing.T) {
 	}
 }
 
+func TestTranslateToChar(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "to_char YYYY-MM-DD (strftime fast path)",
+			input: "SELECT to_char(ts, 'YYYY-MM-DD') FROM t",
+			want:  "SELECT strftime('%Y-%m-%d', ts) FROM t",
+		},
+		{
+			name:  "to_char HH24:MI:SS (strftime fast path)",
+			input: "SELECT to_char(ts, 'HH24:MI:SS') FROM t",
+			want:  "SELECT strftime('%H:%M:%S', ts) FROM t",
+		},
+		{
+			name:  "to_char with Month (runtime path)",
+			input: "SELECT to_char(ts, 'Mon DD, YYYY') FROM t",
+			want:  "SELECT pg_to_char(ts, 'Mon DD, YYYY') FROM t",
+		},
+		{
+			name:  "to_char with Day name (runtime path)",
+			input: "SELECT to_char(ts, 'Day') FROM t",
+			want:  "SELECT pg_to_char(ts, 'Day') FROM t",
+		},
+		{
+			name:  "to_char with AM/PM (runtime path)",
+			input: "SELECT to_char(ts, 'HH12:MI AM') FROM t",
+			want:  "SELECT pg_to_char(ts, 'HH12:MI AM') FROM t",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateNullsOrdering(t *testing.T) {
 	tests := []struct {
 		name  string

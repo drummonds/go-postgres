@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+	"time"
 
 	"modernc.org/sqlite"
 )
@@ -88,6 +89,25 @@ func registerPGFunctions() {
 		},
 	)
 
+	// pg_to_char(datetime_text, pg_format) -> formatted string
+	sqlite.MustRegisterDeterministicScalarFunction("pg_to_char", 2,
+		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if args[0] == nil || args[1] == nil {
+				return nil, nil
+			}
+			dtStr, ok1 := args[0].(string)
+			pgFmt, ok2 := args[1].(string)
+			if !ok1 || !ok2 {
+				return nil, nil
+			}
+			t, err := parseDateTime(dtStr)
+			if err != nil {
+				return dtStr, nil
+			}
+			return formatPGStyle(t, pgFmt), nil
+		},
+	)
+
 	// pg_similar_match(str, pattern) -> 1 if matches SQL SIMILAR TO pattern, 0 otherwise
 	// SIMILAR TO patterns use: % (any string), _ (any char), | (alternation), () (grouping)
 	sqlite.MustRegisterDeterministicScalarFunction("pg_similar_match", 2,
@@ -131,6 +151,62 @@ func registerPGFunctions() {
 			}
 		},
 	)
+}
+
+// parseDateTime parses a datetime string in common SQLite/ISO formats.
+func parseDateTime(s string) (time.Time, error) {
+	formats := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05.000",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02",
+		"15:04:05",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q", s)
+}
+
+// formatPGStyle formats a time using PostgreSQL format patterns.
+func formatPGStyle(t time.Time, pgFmt string) string {
+	months := []string{"", "January", "February", "March", "April", "May", "June",
+		"July", "August", "September", "October", "November", "December"}
+	monthsShort := []string{"", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+	days := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+	daysShort := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+
+	r := strings.NewReplacer(
+		"YYYY", fmt.Sprintf("%04d", t.Year()),
+		"YY", fmt.Sprintf("%02d", t.Year()%100),
+		"Month", months[t.Month()],
+		"MONTH", strings.ToUpper(months[t.Month()]),
+		"month", strings.ToLower(months[t.Month()]),
+		"Mon", monthsShort[t.Month()],
+		"MON", strings.ToUpper(monthsShort[t.Month()]),
+		"mon", strings.ToLower(monthsShort[t.Month()]),
+		"MM", fmt.Sprintf("%02d", t.Month()),
+		"Day", days[t.Weekday()],
+		"DAY", strings.ToUpper(days[t.Weekday()]),
+		"day", strings.ToLower(days[t.Weekday()]),
+		"Dy", daysShort[t.Weekday()],
+		"DY", strings.ToUpper(daysShort[t.Weekday()]),
+		"dy", strings.ToLower(daysShort[t.Weekday()]),
+		"DD", fmt.Sprintf("%02d", t.Day()),
+		"HH24", fmt.Sprintf("%02d", t.Hour()),
+		"HH12", fmt.Sprintf("%02d", (t.Hour()+11)%12+1),
+		"HH", fmt.Sprintf("%02d", t.Hour()),
+		"MI", fmt.Sprintf("%02d", t.Minute()),
+		"SS", fmt.Sprintf("%02d", t.Second()),
+		"AM", map[bool]string{true: "AM", false: "PM"}[t.Hour() < 12],
+		"PM", map[bool]string{true: "AM", false: "PM"}[t.Hour() < 12],
+		"Q", fmt.Sprintf("%d", (int(t.Month())-1)/3+1),
+	)
+	return r.Replace(pgFmt)
 }
 
 // convertSimilarToRegex converts a SQL SIMILAR TO pattern to a Go regex.

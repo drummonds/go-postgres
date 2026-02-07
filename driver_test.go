@@ -469,6 +469,29 @@ func TestDriverRegexOperators(t *testing.T) {
 	}
 }
 
+func TestDriverToChar(t *testing.T) {
+	db := openTestDB(t)
+
+	// Test strftime fast path
+	var result string
+	err := db.QueryRow("SELECT to_char('2024-03-15 14:30:00', 'YYYY-MM-DD')").Scan(&result)
+	if err != nil {
+		t.Fatalf("to_char fast path: %v", err)
+	}
+	if result != "2024-03-15" {
+		t.Errorf("to_char YYYY-MM-DD = %q, want '2024-03-15'", result)
+	}
+
+	// Test runtime path with month name
+	err = db.QueryRow("SELECT pg_to_char('2024-03-15 14:30:00', 'Mon DD, YYYY')").Scan(&result)
+	if err != nil {
+		t.Fatalf("pg_to_char: %v", err)
+	}
+	if result != "Mar 15, 2024" {
+		t.Errorf("pg_to_char Mon DD, YYYY = %q, want 'Mar 15, 2024'", result)
+	}
+}
+
 func TestDriverNullsOrdering(t *testing.T) {
 	db := openTestDB(t)
 

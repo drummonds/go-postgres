@@ -374,7 +374,7 @@ func translateAggFuncs(tokens []Token) []Token {
 					}
 				}
 			case "to_char":
-				// to_char(expr, format) -> strftime(mapped_format, expr)
+				// to_char(expr, format) -> strftime(mapped_format, expr) or pg_to_char(expr, format)
 				j := i + 1
 				for j < len(tokens) && tokens[j].Kind == TokWhitespace {
 					j++
@@ -382,12 +382,10 @@ func translateAggFuncs(tokens []Token) []Token {
 				if j < len(tokens) && tokens[j].Kind == TokParen && tokens[j].Value == "(" {
 					args, endIdx := parseFuncArgs(tokens, j)
 					if len(args) == 2 {
-						pgFmt := extractStringLiteral(args[0])
-						// args[0] is the expression, args[1] is the format in to_char
-						// Actually: to_char(expr, format) - args[0] is expr, args[1] is format
-						pgFmt = extractStringLiteral(args[1])
-						sqliteFmt := mapPGDateFormat(pgFmt)
-						if sqliteFmt != "" {
+						pgFmt := extractStringLiteral(args[1])
+						sqliteFmt, canMap := mapPGDateFormat(pgFmt)
+						if canMap && sqliteFmt != "" {
+							// Fast path: strftime
 							out = append(out, Token{Kind: TokIdent, Value: "strftime", Raw: "strftime"})
 							out = append(out, Token{Kind: TokParen, Value: "(", Raw: "("})
 							out = append(out, Token{Kind: TokString, Value: "'" + sqliteFmt + "'", Raw: "'" + sqliteFmt + "'"})
@@ -395,9 +393,18 @@ func translateAggFuncs(tokens []Token) []Token {
 							out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
 							out = append(out, args[0]...)
 							out = append(out, Token{Kind: TokParen, Value: ")", Raw: ")"})
-							i = endIdx
-							continue
+						} else {
+							// Runtime fallback: pg_to_char
+							out = append(out, Token{Kind: TokIdent, Value: "pg_to_char", Raw: "pg_to_char"})
+							out = append(out, Token{Kind: TokParen, Value: "(", Raw: "("})
+							out = append(out, args[0]...)
+							out = append(out, Token{Kind: TokComma, Value: ",", Raw: ","})
+							out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
+							out = append(out, args[1]...)
+							out = append(out, Token{Kind: TokParen, Value: ")", Raw: ")"})
 						}
+						i = endIdx
+						continue
 					}
 				}
 			}
@@ -470,9 +477,26 @@ func extractStringLiteral(tokens []Token) string {
 }
 
 // mapPGDateFormat maps PostgreSQL date format strings to SQLite strftime formats.
-func mapPGDateFormat(pgFmt string) string {
+// Returns the mapped format and true if all patterns can be mapped to strftime,
+// or empty string and false if runtime fallback is needed.
+func mapPGDateFormat(pgFmt string) (string, bool) {
 	pgFmt = strings.Trim(pgFmt, "'")
-	// Common PG format patterns
+
+	// Patterns that require runtime fallback (can't be mapped to strftime)
+	runtimePatterns := []string{
+		"Mon", "Month", "mon", "month", "MON", "MONTH",
+		"Day", "Dy", "day", "dy", "DAY", "DY",
+		"AM", "PM", "am", "pm", "A.M.", "P.M.",
+		"TZ", "tz", "OF",
+		"Q", // quarter
+		"TM",
+	}
+	for _, p := range runtimePatterns {
+		if strings.Contains(pgFmt, p) {
+			return "", false
+		}
+	}
+
 	replacer := strings.NewReplacer(
 		"YYYY", "%Y",
 		"YY", "%y",
@@ -484,5 +508,5 @@ func mapPGDateFormat(pgFmt string) string {
 		"MI", "%M",
 		"SS", "%S",
 	)
-	return replacer.Replace(pgFmt)
+	return replacer.Replace(pgFmt), true
 }
