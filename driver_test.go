@@ -291,6 +291,44 @@ func TestDriverComplexTable(t *testing.T) {
 	}
 }
 
+func TestDriverDollarQuotedStrings(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	// Insert using dollar-quoted string
+	_, err = db.Exec("INSERT INTO t (id, val) VALUES (1, $$hello world$$)")
+	if err != nil {
+		t.Fatalf("INSERT with $$: %v", err)
+	}
+
+	var val string
+	err = db.QueryRow("SELECT val FROM t WHERE id = 1").Scan(&val)
+	if err != nil {
+		t.Fatalf("SELECT: %v", err)
+	}
+	if val != "hello world" {
+		t.Errorf("val = %q, want 'hello world'", val)
+	}
+
+	// Insert with single quotes inside dollar-quoted string
+	_, err = db.Exec("INSERT INTO t (id, val) VALUES (2, $$it's a test$$)")
+	if err != nil {
+		t.Fatalf("INSERT with quotes: %v", err)
+	}
+
+	err = db.QueryRow("SELECT val FROM t WHERE id = 2").Scan(&val)
+	if err != nil {
+		t.Fatalf("SELECT: %v", err)
+	}
+	if val != "it's a test" {
+		t.Errorf("val = %q, want \"it's a test\"", val)
+	}
+}
+
 func TestDriverGroupConcat(t *testing.T) {
 	db := openTestDB(t)
 

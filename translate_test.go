@@ -308,6 +308,57 @@ func TestTranslateParams(t *testing.T) {
 	}
 }
 
+func TestDollarQuotedStrings(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "simple $$",
+			input: "SELECT $$hello world$$",
+			want:  "SELECT 'hello world'",
+		},
+		{
+			name:  "tagged $fn$",
+			input: "SELECT $fn$body text$fn$",
+			want:  "SELECT 'body text'",
+		},
+		{
+			name:  "$$ with single quotes inside",
+			input: "SELECT $$it's a test$$",
+			want:  "SELECT 'it''s a test'",
+		},
+		{
+			name:  "$$ empty string",
+			input: "SELECT $$$$",
+			want:  "SELECT ''",
+		},
+		{
+			name:  "$$ in INSERT",
+			input: "INSERT INTO t (val) VALUES ($$hello$$)",
+			want:  "INSERT INTO t (val) VALUES ('hello')",
+		},
+		{
+			name:  "$$ with param still works",
+			input: "SELECT $1, $$literal$$",
+			want:  "SELECT ?, 'literal'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslatePassthrough(t *testing.T) {
 	tests := []struct {
 		name  string

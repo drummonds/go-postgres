@@ -78,6 +78,12 @@ var sqlKeywords = map[string]bool{
 	"ABSOLUTE": true, "RELATIVE": true, "FORWARD": true, "BACKWARD": true,
 	"SOME": true, "ANY": true, "EVERY": true, "ARRAY": true,
 	"INTERVAL": true, "WITHOUT": true,
+
+	// Phase 2 keywords
+	"NULLS": true, "SEQUENCE": true, "INCREMENT": true, "START": true,
+	"MINVALUE": true, "MAXVALUE": true, "CYCLE": true, "OWNED": true,
+	"EXPLAIN": true, "ANALYZE": true, "VERBOSE": true, "PLAN": true,
+	"QUERY": true,
 }
 
 // Tokenize splits a SQL string into tokens.
@@ -180,15 +186,32 @@ func Tokenize(sql string) []Token {
 			continue
 		}
 
-		// Parameter $1, $2, ...
-		if ch == '$' && i+1 < n && unicode.IsDigit(runes[i+1]) {
-			start := i
-			i++
-			for i < n && unicode.IsDigit(runes[i]) {
-				i++
+		// Dollar-quoted string $$...$$ or $tag$...$tag$
+		if ch == '$' {
+			if tag, end, ok := tryDollarQuote(runes, i, n); ok {
+				// Extract content between tags
+				content := string(runes[i+len(tag) : end-len(tag)])
+				// Convert to standard SQL string
+				escaped := strings.ReplaceAll(content, "'", "''")
+				newRaw := "'" + escaped + "'"
+				tokens = append(tokens, Token{Kind: TokString, Value: newRaw, Raw: newRaw})
+				i = end
+				continue
 			}
-			raw := string(runes[start:i])
-			tokens = append(tokens, Token{Kind: TokParam, Value: raw, Raw: raw})
+			// Parameter $1, $2, ...
+			if i+1 < n && unicode.IsDigit(runes[i+1]) {
+				start := i
+				i++
+				for i < n && unicode.IsDigit(runes[i]) {
+					i++
+				}
+				raw := string(runes[start:i])
+				tokens = append(tokens, Token{Kind: TokParam, Value: raw, Raw: raw})
+				continue
+			}
+			// Lone $ — emit as operator
+			tokens = append(tokens, Token{Kind: TokOperator, Value: "$", Raw: "$"})
+			i++
 			continue
 		}
 
@@ -216,6 +239,23 @@ func Tokenize(sql string) []Token {
 		// Operator ::
 		if ch == ':' && i+1 < n && runes[i+1] == ':' {
 			tokens = append(tokens, Token{Kind: TokOperator, Value: "::", Raw: "::"})
+			i += 2
+			continue
+		}
+
+		// Regex operators !~* !~ ~*
+		if ch == '!' && i+1 < n && runes[i+1] == '~' {
+			if i+2 < n && runes[i+2] == '*' {
+				tokens = append(tokens, Token{Kind: TokOperator, Value: "!~*", Raw: "!~*"})
+				i += 3
+			} else {
+				tokens = append(tokens, Token{Kind: TokOperator, Value: "!~", Raw: "!~"})
+				i += 2
+			}
+			continue
+		}
+		if ch == '~' && i+1 < n && runes[i+1] == '*' {
+			tokens = append(tokens, Token{Kind: TokOperator, Value: "~*", Raw: "~*"})
 			i += 2
 			continue
 		}
@@ -330,6 +370,56 @@ func Translate(sql string) (string, error) {
 	tokens = translateFunctions(tokens)
 	tokens = translateParams(tokens)
 	return Reassemble(tokens), nil
+}
+
+// tryDollarQuote checks if runes[i:] starts a dollar-quoted string ($$...$$ or $tag$...$tag$).
+// Returns the opening tag (including $ delimiters), the end position, and whether it matched.
+func tryDollarQuote(runes []rune, i, n int) (tag []rune, end int, ok bool) {
+	// Must start with $
+	if i >= n || runes[i] != '$' {
+		return nil, 0, false
+	}
+
+	// Find the end of the opening tag: $$ or $identifier$
+	j := i + 1
+	if j >= n {
+		return nil, 0, false
+	}
+
+	if runes[j] == '$' {
+		// $$ tag
+		tag = runes[i : j+1] // "$$"
+	} else if runes[j] == '_' || unicode.IsLetter(runes[j]) {
+		// $identifier$ tag
+		k := j
+		for k < n && (runes[k] == '_' || unicode.IsLetter(runes[k]) || unicode.IsDigit(runes[k])) {
+			k++
+		}
+		if k >= n || runes[k] != '$' {
+			return nil, 0, false
+		}
+		tag = runes[i : k+1] // "$tag$"
+	} else {
+		return nil, 0, false
+	}
+
+	// Search for the closing tag
+	tagLen := len(tag)
+	searchStart := i + tagLen
+	for p := searchStart; p+tagLen <= n; p++ {
+		match := true
+		for q := 0; q < tagLen; q++ {
+			if runes[p+q] != tag[q] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return tag, p + tagLen, true
+		}
+	}
+
+	return nil, 0, false
 }
 
 // translateParams converts $1, $2, ... to ? placeholders.
