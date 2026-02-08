@@ -793,3 +793,83 @@ func TestDriverGroupConcat(t *testing.T) {
 		t.Errorf("group_concat = %q, expected a, b, c", agg)
 	}
 }
+
+func TestDriverReturning(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec(`CREATE TABLE ret_test (
+		id SERIAL PRIMARY KEY,
+		name TEXT NOT NULL
+	)`)
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	// INSERT RETURNING single column
+	var id int64
+	err = db.QueryRow("INSERT INTO ret_test (name) VALUES ($1) RETURNING id", "Alice").Scan(&id)
+	if err != nil {
+		t.Fatalf("INSERT RETURNING id: %v", err)
+	}
+	if id != 1 {
+		t.Errorf("RETURNING id = %d, want 1", id)
+	}
+
+	// INSERT RETURNING multiple columns
+	var id2 int64
+	var name string
+	err = db.QueryRow("INSERT INTO ret_test (name) VALUES ($1) RETURNING id, name", "Bob").Scan(&id2, &name)
+	if err != nil {
+		t.Fatalf("INSERT RETURNING id, name: %v", err)
+	}
+	if id2 != 2 {
+		t.Errorf("RETURNING id = %d, want 2", id2)
+	}
+	if name != "Bob" {
+		t.Errorf("RETURNING name = %q, want Bob", name)
+	}
+
+	// INSERT RETURNING *
+	var id3 int64
+	var name3 string
+	err = db.QueryRow("INSERT INTO ret_test (name) VALUES ($1) RETURNING *", "Charlie").Scan(&id3, &name3)
+	if err != nil {
+		t.Fatalf("INSERT RETURNING *: %v", err)
+	}
+	if id3 != 3 || name3 != "Charlie" {
+		t.Errorf("RETURNING * = (%d, %q), want (3, Charlie)", id3, name3)
+	}
+}
+
+func TestDriverAlterTableAddColumnIfNotExists(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE alter_test (id INTEGER PRIMARY KEY, name TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	// First ADD COLUMN IF NOT EXISTS should succeed
+	_, err = db.Exec("ALTER TABLE alter_test ADD COLUMN IF NOT EXISTS email TEXT")
+	if err != nil {
+		t.Fatalf("ALTER TABLE ADD COLUMN IF NOT EXISTS (first): %v", err)
+	}
+
+	// Verify column was added
+	_, err = db.Exec("INSERT INTO alter_test (id, name, email) VALUES (1, 'Alice', 'alice@test.com')")
+	if err != nil {
+		t.Fatalf("INSERT with new column: %v", err)
+	}
+
+	// Second ADD COLUMN IF NOT EXISTS on same column should not error
+	_, err = db.Exec("ALTER TABLE alter_test ADD COLUMN IF NOT EXISTS email TEXT")
+	if err != nil {
+		t.Errorf("ALTER TABLE ADD COLUMN IF NOT EXISTS (duplicate): %v", err)
+	}
+
+	// Plain ADD COLUMN on existing column SHOULD error
+	_, err = db.Exec("ALTER TABLE alter_test ADD COLUMN email TEXT")
+	if err == nil {
+		t.Error("expected error on duplicate ADD COLUMN without IF NOT EXISTS")
+	}
+}
