@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func openTestDB(t *testing.T) *sql.DB {
@@ -538,13 +539,14 @@ func TestDriverInterval(t *testing.T) {
 	db := openTestDB(t)
 
 	// INTERVAL addition
-	var result string
+	var result time.Time
 	err := db.QueryRow("SELECT '2024-01-15 10:00:00' + INTERVAL '1 day'").Scan(&result)
 	if err != nil {
 		t.Fatalf("INTERVAL +: %v", err)
 	}
-	if result != "2024-01-16 10:00:00" {
-		t.Errorf("+ INTERVAL '1 day' = %q, want '2024-01-16 10:00:00'", result)
+	expected := time.Date(2024, 1, 16, 10, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("+ INTERVAL '1 day' = %v, want %v", result, expected)
 	}
 
 	// INTERVAL subtraction
@@ -552,8 +554,9 @@ func TestDriverInterval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("INTERVAL -: %v", err)
 	}
-	if result != "2024-01-15 08:00:00" {
-		t.Errorf("- INTERVAL '2 hours' = %q, want '2024-01-15 08:00:00'", result)
+	expected = time.Date(2024, 1, 15, 8, 0, 0, 0, time.UTC)
+	if !result.Equal(expected) {
+		t.Errorf("- INTERVAL '2 hours' = %v, want %v", result, expected)
 	}
 }
 
@@ -678,6 +681,93 @@ func TestDriverExplain(t *testing.T) {
 	}
 	if rowCount == 0 {
 		t.Error("EXPLAIN returned no rows")
+	}
+}
+
+func TestDriverTimestampScan(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec(`CREATE TABLE ts_test (
+		id SERIAL PRIMARY KEY,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	_, err = db.Exec("INSERT INTO ts_test (id) VALUES (1)")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	// Scanning into *time.Time should work without custom scanner
+	var createdAt time.Time
+	err = db.QueryRow("SELECT created_at FROM ts_test WHERE id = 1").Scan(&createdAt)
+	if err != nil {
+		t.Fatalf("Scan into time.Time: %v", err)
+	}
+
+	if createdAt.IsZero() {
+		t.Error("created_at is zero, expected a valid timestamp")
+	}
+
+	// Also test with an explicit datetime value
+	_, err = db.Exec("INSERT INTO ts_test (id, created_at) VALUES (2, '2024-03-15 14:30:00')")
+	if err != nil {
+		t.Fatalf("INSERT explicit: %v", err)
+	}
+
+	var ts2 time.Time
+	err = db.QueryRow("SELECT created_at FROM ts_test WHERE id = 2").Scan(&ts2)
+	if err != nil {
+		t.Fatalf("Scan explicit timestamp: %v", err)
+	}
+
+	if ts2.Year() != 2024 || ts2.Month() != 3 || ts2.Day() != 15 {
+		t.Errorf("expected 2024-03-15, got %v", ts2)
+	}
+	if ts2.Hour() != 14 || ts2.Minute() != 30 {
+		t.Errorf("expected 14:30, got %v", ts2)
+	}
+}
+
+func TestDriverTimestampFormats(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec("CREATE TABLE ts_fmt (id INTEGER PRIMARY KEY, ts TIMESTAMP)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	// Test various timestamp formats that SQLite might produce
+	formats := []struct {
+		id    int
+		value string
+		year  int
+		month time.Month
+		day   int
+	}{
+		{1, "2024-06-01 12:00:00", 2024, time.June, 1},
+		{2, "2024-03-15T14:30:00Z", 2024, time.March, 15},
+		{3, "2024-12-25 08:00:00+00:00", 2024, time.December, 25},
+	}
+
+	for _, f := range formats {
+		_, err := db.Exec("INSERT INTO ts_fmt VALUES (?, ?)", f.id, f.value)
+		if err != nil {
+			t.Fatalf("INSERT id=%d: %v", f.id, err)
+		}
+	}
+
+	for _, f := range formats {
+		var ts time.Time
+		err := db.QueryRow("SELECT ts FROM ts_fmt WHERE id = ?", f.id).Scan(&ts)
+		if err != nil {
+			t.Fatalf("Scan id=%d (%s): %v", f.id, f.value, err)
+		}
+		if ts.Year() != f.year || ts.Month() != f.month || ts.Day() != f.day {
+			t.Errorf("id=%d: expected %d-%02d-%02d, got %v", f.id, f.year, f.month, f.day, ts)
+		}
 	}
 }
 

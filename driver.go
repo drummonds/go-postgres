@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -286,7 +287,46 @@ func (r *rows) Close() error {
 }
 
 func (r *rows) Next(dest []driver.Value) error {
-	return r.inner.Next(dest)
+	if err := r.inner.Next(dest); err != nil {
+		return err
+	}
+	// Coerce string values that look like timestamps to time.Time.
+	for i, v := range dest {
+		if s, ok := v.(string); ok {
+			if t, ok := tryParseTimestamp(s); ok {
+				dest[i] = t
+			}
+		}
+	}
+	return nil
+}
+
+// timestampLayouts lists time formats that SQLite's datetime() function produces.
+// Only full datetime formats are included — date-only strings ("2006-01-02")
+// are intentionally excluded so that strftime/to_char results remain as strings.
+var timestampLayouts = []string{
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05Z",
+	"2006-01-02T15:04:05Z07:00",
+	"2006-01-02 15:04:05+00:00",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02T15:04:05.999999999Z07:00",
+}
+
+// tryParseTimestamp attempts to parse a string as a datetime timestamp.
+// Returns the parsed time and true if successful. Only matches full datetime
+// strings (date + time), not date-only or time-only strings.
+func tryParseTimestamp(s string) (time.Time, bool) {
+	// Quick reject: must be long enough for "YYYY-MM-DD HH:MM:SS" and start with date pattern.
+	if len(s) < 19 || s[4] != '-' {
+		return time.Time{}, false
+	}
+	for _, layout := range timestampLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // result wraps a SQLite result (pass-through).
