@@ -7,7 +7,67 @@ func translateDDL(tokens []Token) []Token {
 	tokens = translateTypes(tokens)
 	tokens = translateSerial(tokens)
 	tokens = translateDefaultNow(tokens)
+	tokens = translateAlterTableAddColumn(tokens)
 	return tokens
+}
+
+// translateAlterTableAddColumn strips IF NOT EXISTS from ALTER TABLE ADD COLUMN
+// since SQLite does not support that syntax. The driver layer handles suppressing
+// duplicate column errors when IF NOT EXISTS was present in the original query.
+func translateAlterTableAddColumn(tokens []Token) []Token {
+	// Look for pattern: ALTER TABLE <name> ADD [COLUMN] IF NOT EXISTS
+	var out []Token
+	for i := 0; i < len(tokens); i++ {
+		// Match IF NOT EXISTS after ADD or ADD COLUMN
+		if tokens[i].Kind == TokKeyword && tokens[i].Value == "IF" {
+			// Check: IF NOT EXISTS
+			j := i + 1
+			for j < len(tokens) && tokens[j].Kind == TokWhitespace {
+				j++
+			}
+			if j < len(tokens) && tokens[j].Kind == TokKeyword && tokens[j].Value == "NOT" {
+				k := j + 1
+				for k < len(tokens) && tokens[k].Kind == TokWhitespace {
+					k++
+				}
+				if k < len(tokens) && tokens[k].Kind == TokKeyword && tokens[k].Value == "EXISTS" {
+					// Check if this follows ADD or ADD COLUMN by looking backwards
+					if isAfterAddColumn(out) {
+						// Skip IF NOT EXISTS and any trailing whitespace
+						i = k
+						// Also skip one whitespace after EXISTS if present
+						if i+1 < len(tokens) && tokens[i+1].Kind == TokWhitespace {
+							i++
+						}
+						continue
+					}
+				}
+			}
+		}
+		out = append(out, tokens[i])
+	}
+	return out
+}
+
+// isAfterAddColumn checks if the last non-whitespace tokens in out are ADD [COLUMN].
+func isAfterAddColumn(tokens []Token) bool {
+	pos := len(tokens)
+	// Skip trailing whitespace
+	for pos > 0 && tokens[pos-1].Kind == TokWhitespace {
+		pos--
+	}
+	if pos == 0 {
+		return false
+	}
+	// Check for COLUMN (optional)
+	if tokens[pos-1].Kind == TokKeyword && tokens[pos-1].Value == "COLUMN" {
+		pos--
+		for pos > 0 && tokens[pos-1].Kind == TokWhitespace {
+			pos--
+		}
+	}
+	// Must end with ADD
+	return pos > 0 && tokens[pos-1].Kind == TokKeyword && tokens[pos-1].Value == "ADD"
 }
 
 // translateSerial replaces SERIAL/BIGSERIAL/SMALLSERIAL with INTEGER PRIMARY KEY AUTOINCREMENT.

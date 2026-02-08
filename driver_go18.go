@@ -3,6 +3,7 @@ package pglike
 import (
 	"context"
 	"database/sql/driver"
+	"strings"
 )
 
 // Compile-time interface checks.
@@ -66,9 +67,13 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	if err != nil {
 		return nil, err
 	}
+	suppressDupCol := isAlterAddColumnIfNotExists(query)
 	if execer, ok := c.inner.(driver.ExecerContext); ok {
 		r, err := execer.ExecContext(ctx, translated, args)
 		if err != nil {
+			if suppressDupCol && isDuplicateColumnError(err) {
+				return driver.ResultNoRows, nil
+			}
 			return nil, wrapError(err)
 		}
 		return &result{inner: r}, nil
@@ -76,11 +81,18 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	// Fallback to Prepare + Exec
 	s, err := c.Prepare(translated)
 	if err != nil {
+		if suppressDupCol && isDuplicateColumnError(err) {
+			return driver.ResultNoRows, nil
+		}
 		return nil, err
 	}
 	defer s.Close()
 	values := namedToValues(args)
-	return s.Exec(values)
+	r, err := s.Exec(values)
+	if err != nil && suppressDupCol && isDuplicateColumnError(err) {
+		return driver.ResultNoRows, nil
+	}
+	return r, err
 }
 
 // QueryContext implements driver.QueryerContext.
@@ -143,4 +155,17 @@ func namedToValues(named []driver.NamedValue) []driver.Value {
 		values[i] = nv.Value
 	}
 	return values
+}
+
+// isAlterAddColumnIfNotExists checks if a query is an ALTER TABLE ADD COLUMN IF NOT EXISTS.
+func isAlterAddColumnIfNotExists(query string) bool {
+	upper := strings.ToUpper(query)
+	return strings.Contains(upper, "ALTER") &&
+		strings.Contains(upper, "ADD") &&
+		strings.Contains(upper, "IF NOT EXISTS")
+}
+
+// isDuplicateColumnError checks if an error is a SQLite "duplicate column name" error.
+func isDuplicateColumnError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "duplicate column name")
 }

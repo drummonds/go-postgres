@@ -130,6 +130,21 @@ func TestTranslateDDL(t *testing.T) {
 			input: "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, email VARCHAR(255) UNIQUE, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW())",
 			want:  "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')))",
 		},
+		{
+			name:  "ALTER TABLE ADD COLUMN IF NOT EXISTS",
+			input: "ALTER TABLE t ADD COLUMN IF NOT EXISTS email TEXT",
+			want:  "ALTER TABLE t ADD COLUMN email TEXT",
+		},
+		{
+			name:  "ALTER TABLE ADD IF NOT EXISTS without COLUMN",
+			input: "ALTER TABLE t ADD IF NOT EXISTS email TEXT",
+			want:  "ALTER TABLE t ADD email TEXT",
+		},
+		{
+			name:  "ALTER TABLE ADD COLUMN without IF NOT EXISTS",
+			input: "ALTER TABLE t ADD COLUMN email TEXT",
+			want:  "ALTER TABLE t ADD COLUMN email TEXT",
+		},
 	}
 
 	for _, tt := range tests {
