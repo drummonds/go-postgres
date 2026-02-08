@@ -576,6 +576,21 @@ func TestTranslateNullsOrdering(t *testing.T) {
 			input: "SELECT * FROM t ORDER BY name NULLS LAST",
 			want:  "SELECT * FROM t ORDER BY (CASE WHEN name IS NULL THEN 1 ELSE 0 END), name",
 		},
+		{
+			name:  "table-qualified column NULLS FIRST",
+			input: "SELECT * FROM t ORDER BY t.name ASC NULLS FIRST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN t.name IS NULL THEN 0 ELSE 1 END), t.name ASC",
+		},
+		{
+			name:  "multiple NULLS orderings",
+			input: "SELECT * FROM t ORDER BY a ASC NULLS FIRST, b DESC NULLS LAST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN a IS NULL THEN 0 ELSE 1 END), a ASC, (CASE WHEN b IS NULL THEN 1 ELSE 0 END), b DESC",
+		},
+		{
+			name:  "expression column NULLS FIRST",
+			input: "SELECT * FROM t ORDER BY LOWER(name) NULLS FIRST",
+			want:  "SELECT * FROM t ORDER BY (CASE WHEN LOWER(name) IS NULL THEN 0 ELSE 1 END), LOWER(name)",
+		},
 	}
 
 	for _, tt := range tests {
