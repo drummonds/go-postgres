@@ -181,6 +181,8 @@ var pgTypeToSQLite = map[string]string{
 	"BIGINT":    "INTEGER",
 	"FLOAT4":    "REAL",
 	"FLOAT8":    "REAL",
+	"NUMERIC":   "TEXT",
+	"DECIMAL":   "TEXT",
 }
 
 // MapType maps a PostgreSQL type name to its SQLite equivalent.
@@ -239,8 +241,8 @@ func translateTypes(tokens []Token) []Token {
 			continue
 
 		case "NUMERIC", "DECIMAL":
-			// NUMERIC(p,s) -> REAL
-			out = append(out, Token{Kind: TokKeyword, Value: "REAL", Raw: "REAL"})
+			// NUMERIC(p,s) -> TEXT (preserves arbitrary precision)
+			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
 			i = skipParenGroup(tokens, i+1)
 			continue
 

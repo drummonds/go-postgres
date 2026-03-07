@@ -98,7 +98,7 @@ The driver accepts several DSN formats:
 | `BIGINT` / `INT8` | `INTEGER` |
 | `REAL` / `FLOAT4` | `REAL` |
 | `DOUBLE PRECISION` / `FLOAT8` | `REAL` |
-| `NUMERIC(p,s)` / `DECIMAL(p,s)` | `REAL` |
+| `NUMERIC(p,s)` / `DECIMAL(p,s)` | `TEXT` |
 | `TEXT` | `TEXT` |
 | `INTERVAL` | `TEXT` |
 

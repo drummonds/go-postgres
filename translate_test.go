@@ -93,7 +93,7 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "NUMERIC(10,2)",
 			input: "CREATE TABLE t (price NUMERIC(10,2))",
-			want:  "CREATE TABLE t (price REAL)",
+			want:  "CREATE TABLE t (price TEXT)",
 		},
 		{
 			name:  "SMALLINT",

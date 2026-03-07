@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func openTestDB(t *testing.T) *sql.DB {
@@ -871,5 +873,80 @@ func TestDriverAlterTableAddColumnIfNotExists(t *testing.T) {
 	_, err = db.Exec("ALTER TABLE alter_test ADD COLUMN email TEXT")
 	if err == nil {
 		t.Error("expected error on duplicate ADD COLUMN without IF NOT EXISTS")
+	}
+}
+
+func TestDriverNumericPrecision(t *testing.T) {
+	db := openTestDB(t)
+
+	_, err := db.Exec(`CREATE TABLE numeric_test (
+		id INTEGER PRIMARY KEY,
+		price NUMERIC(20,10),
+		amount DECIMAL(30,15)
+	)`)
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+
+	// Values that would lose precision if stored as REAL (float64)
+	tests := []struct {
+		id     int
+		price  string
+		amount string
+	}{
+		{1, "123456789.1234567890", "0.123456789012345"},
+		{2, "0.1000000000", "99999999999999.999999999999999"},
+		{3, "9999999999.9999999999", "0.000000000000001"},
+	}
+
+	for _, tt := range tests {
+		_, err := db.Exec(
+			"INSERT INTO numeric_test (id, price, amount) VALUES (?, ?, ?)",
+			tt.id, tt.price, tt.amount,
+		)
+		if err != nil {
+			t.Fatalf("INSERT id=%d: %v", tt.id, err)
+		}
+	}
+
+	for _, tt := range tests {
+		var price, amount decimal.Decimal
+		err := db.QueryRow(
+			"SELECT price, amount FROM numeric_test WHERE id = ?", tt.id,
+		).Scan(&price, &amount)
+		if err != nil {
+			t.Fatalf("Scan id=%d: %v", tt.id, err)
+		}
+
+		wantPrice, _ := decimal.NewFromString(tt.price)
+		wantAmount, _ := decimal.NewFromString(tt.amount)
+
+		if !price.Equal(wantPrice) {
+			t.Errorf("id=%d price: got %s, want %s", tt.id, price, wantPrice)
+		}
+		if !amount.Equal(wantAmount) {
+			t.Errorf("id=%d amount: got %s, want %s", tt.id, amount, wantAmount)
+		}
+	}
+}
+
+func TestDriverNumericCast(t *testing.T) {
+	db := openTestDB(t)
+
+	// Casting to NUMERIC should preserve precision (TEXT in SQLite)
+	var val string
+	err := db.QueryRow("SELECT CAST('123456789.123456789' AS NUMERIC)").Scan(&val)
+	if err != nil {
+		t.Fatalf("CAST AS NUMERIC: %v", err)
+	}
+
+	d, err := decimal.NewFromString(val)
+	if err != nil {
+		t.Fatalf("parsing result as decimal: %v", err)
+	}
+
+	want, _ := decimal.NewFromString("123456789.123456789")
+	if !d.Equal(want) {
+		t.Errorf("CAST result = %s, want %s", d, want)
 	}
 }
