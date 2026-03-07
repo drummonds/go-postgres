@@ -18,6 +18,7 @@
 - Schema support via `ATTACH DATABASE`
 - Array types stored as JSON
 - JSONB containment operators (`@>`, `<@`, `#>`)
+- `ON CONFLICT ON CONSTRAINT <name>` → resolve to column list (requires schema introspection)
 - More comprehensive `ALTER TABLE` support
 - `COPY` command support
 - `LISTEN` / `NOTIFY` emulation
