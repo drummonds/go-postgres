@@ -169,6 +169,15 @@ go-postgres/
   ROADMAP.md              Phase 2 and 3 plans
 ```
 
+## Links
+
+| | |
+|---|---|
+| Documentation | https://h3-go-postgres.statichost.page/ |
+| Source (Codeberg) | https://codeberg.org/hum3/go-postgres |
+| Mirror (GitHub) | https://github.com/drummonds/go-postgres |
+| Docs repo | https://codeberg.org/hum3/go-postgres-docs |
+
 ## License
 
 MIT
