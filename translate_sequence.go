@@ -73,7 +73,7 @@ func translateCreateSequence(tokens []Token, start int) ([]Token, bool) {
 					}
 				}
 				if m < len(tokens) && tokens[m].Kind == TokNumber {
-					fmt.Sscanf(tokens[m].Value, "%d", &increment)
+					_, _ = fmt.Sscanf(tokens[m].Value, "%d", &increment)
 					m++
 				}
 			case "START":
@@ -89,7 +89,7 @@ func translateCreateSequence(tokens []Token, start int) ([]Token, bool) {
 					}
 				}
 				if m < len(tokens) && tokens[m].Kind == TokNumber {
-					fmt.Sscanf(tokens[m].Value, "%d", &startVal)
+					_, _ = fmt.Sscanf(tokens[m].Value, "%d", &startVal)
 					m++
 				}
 			default:

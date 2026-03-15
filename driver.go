@@ -29,7 +29,7 @@ func (d *Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 	// We need a raw driver.Conn; get one from the underlying sqlite driver
-	db.Close()
+	_ = db.Close()
 
 	// Use the sqlite driver directly
 	sqliteDriver := getSQLiteDriver()

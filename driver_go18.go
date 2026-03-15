@@ -88,7 +88,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 	defer s.Close()
 	values := namedToValues(args)
-	r, err := s.Exec(values)
+	r, err := s.Exec(values) //nolint:staticcheck // intentional fallback for older driver interfaces
 	if err != nil && suppressDupCol && isDuplicateColumnError(err) {
 		return driver.ResultNoRows, nil
 	}
@@ -119,7 +119,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	}
 	defer s.Close()
 	values := namedToValues(args)
-	return s.Query(values)
+	return s.Query(values) //nolint:staticcheck // intentional fallback for older driver interfaces
 }
 
 // ExecContext implements driver.StmtExecContext.
@@ -132,7 +132,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return &result{inner: r}, nil
 	}
 	values := namedToValues(args)
-	return s.Exec(values)
+	return s.Exec(values) //nolint:staticcheck // intentional fallback for older driver interfaces
 }
 
 // QueryContext implements driver.StmtQueryContext.
@@ -145,7 +145,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		return &rows{inner: r}, nil
 	}
 	values := namedToValues(args)
-	return s.Query(values)
+	return s.Query(values) //nolint:staticcheck // intentional fallback for older driver interfaces
 }
 
 // namedToValues converts NamedValue args to positional Value args.

@@ -155,18 +155,23 @@ These functions are registered as SQLite custom functions and can be called dire
 
 ```
 go-postgres/
-  go.mod                  Module definition (single dependency: modernc.org/sqlite)
-  driver.go               Driver registration, conn/stmt/rows/tx/result wrappers, DSN parsing
-  driver_go18.go          Go 1.8+ context-aware interfaces
-  translate.go            Core tokenizer + translation pipeline
-  translate_ddl.go        DDL type mappings (SERIAL, BOOLEAN, VARCHAR, etc.)
-  translate_expr.go       Expression translations (::cast, ILIKE, TRUE/FALSE, E'strings')
-  translate_func.go       Function translations (NOW, date_trunc, EXTRACT, etc.)
-  pgfuncs.go              PG-compat functions registered in SQLite
-  translate_test.go       Unit tests for all translations
-  driver_test.go          Integration tests (full SQL round-trips)
-  example/main.go         Usage example
-  ROADMAP.md              Phase 2 and 3 plans
+  go.mod                    Module definition
+  driver.go                 Driver registration, conn/stmt/rows/tx/result wrappers, DSN parsing
+  driver_go18.go            Go 1.8+ context-aware interfaces
+  translate.go              Core tokenizer + translation pipeline
+  translate_ddl.go          DDL type mappings (SERIAL, BOOLEAN, VARCHAR, etc.)
+  translate_expr.go         Expression translations (::cast, ILIKE, TRUE/FALSE, E'strings')
+  translate_func.go         Function translations (NOW, date_trunc, EXTRACT, etc.)
+  translate_genseries.go    generate_series() → recursive CTE rewriting
+  translate_interval.go     INTERVAL literal parsing and arithmetic
+  translate_order.go        NULLS FIRST/LAST ordering support
+  translate_sequence.go     CREATE/DROP SEQUENCE emulation
+  pgfuncs.go                PG-compat functions registered in SQLite
+  pgerror.go                PG SQLSTATE error code wrapping
+  translate_test.go         Unit tests for all translations
+  driver_test.go            Integration tests (full SQL round-trips)
+  example/main.go           Usage example
+  ROADMAP.md                Development roadmap
 ```
 
 ## Links
@@ -176,7 +181,6 @@ go-postgres/
 | Documentation | https://h3-go-postgres.statichost.page/ |
 | Source (Codeberg) | https://codeberg.org/hum3/go-postgres |
 | Mirror (GitHub) | https://github.com/drummonds/go-postgres |
-| Docs repo | https://codeberg.org/hum3/go-postgres-docs |
 
 ## License
 

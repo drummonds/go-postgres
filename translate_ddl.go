@@ -92,7 +92,7 @@ func translateSerial(tokens []Token) []Token {
 			// and strip out [CONSTRAINT name] PRIMARY KEY to avoid duplication.
 			var rest []Token
 			j := i + 1
-			for j < len(tokens) && tokens[j].Kind != TokComma && !(tokens[j].Kind == TokParen && tokens[j].Value == ")") {
+			for j < len(tokens) && tokens[j].Kind != TokComma && (tokens[j].Kind != TokParen || tokens[j].Value != ")") {
 				rest = append(rest, tokens[j])
 				j++
 			}
@@ -160,29 +160,29 @@ func stripPrimaryKey(tokens []Token) []Token {
 
 // pgTypeToSQLite maps PG type names to SQLite type names.
 var pgTypeToSQLite = map[string]string{
-	"BOOLEAN":   "INTEGER",
-	"BOOL":      "INTEGER",
-	"VARCHAR":   "TEXT",
-	"CHARACTER": "TEXT", // starts CHARACTER VARYING
-	"CHAR":      "TEXT",
-	"TIMESTAMP": "TEXT",
+	"BOOLEAN":     "INTEGER",
+	"BOOL":        "INTEGER",
+	"VARCHAR":     "TEXT",
+	"CHARACTER":   "TEXT", // starts CHARACTER VARYING
+	"CHAR":        "TEXT",
+	"TIMESTAMP":   "TEXT",
 	"TIMESTAMPTZ": "TEXT",
-	"DATE":      "TEXT",
-	"TIME":      "TEXT",
-	"TIMETZ":    "TEXT",
-	"UUID":      "TEXT",
-	"BYTEA":     "BLOB",
-	"JSON":      "TEXT",
-	"JSONB":     "TEXT",
-	"SMALLINT":  "INTEGER",
-	"INT2":      "INTEGER",
-	"INT4":      "INTEGER",
-	"INT8":      "INTEGER",
-	"BIGINT":    "INTEGER",
-	"FLOAT4":    "REAL",
-	"FLOAT8":    "REAL",
-	"NUMERIC":   "TEXT",
-	"DECIMAL":   "TEXT",
+	"DATE":        "TEXT",
+	"TIME":        "TEXT",
+	"TIMETZ":      "TEXT",
+	"UUID":        "TEXT",
+	"BYTEA":       "BLOB",
+	"JSON":        "TEXT",
+	"JSONB":       "TEXT",
+	"SMALLINT":    "INTEGER",
+	"INT2":        "INTEGER",
+	"INT4":        "INTEGER",
+	"INT8":        "INTEGER",
+	"BIGINT":      "INTEGER",
+	"FLOAT4":      "REAL",
+	"FLOAT8":      "REAL",
+	"NUMERIC":     "TEXT",
+	"DECIMAL":     "TEXT",
 }
 
 // MapType maps a PostgreSQL type name to its SQLite equivalent.

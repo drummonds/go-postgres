@@ -92,7 +92,7 @@ tokens = translateParams(tokens)         // $1,$2 → ?,?
 | JSON/JSONB | TEXT |
 | SMALLINT/INT2/BIGINT/INT8 | INTEGER |
 | FLOAT4/REAL/DOUBLE PRECISION | REAL |
-| NUMERIC/DECIMAL | REAL |
+| NUMERIC/DECIMAL | TEXT |
 
 ### SERIAL handling
 

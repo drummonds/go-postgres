@@ -298,7 +298,7 @@ func translateLeftRight(tokens []Token) []Token {
 	return out
 }
 
-// translateConcat converts concat(a, b, ...) to (COALESCE(a,'') || COALESCE(b,'') || ...).
+// translateConcat converts concat(a, b, ...) to (COALESCE(a,”) || COALESCE(b,”) || ...).
 func translateConcat(tokens []Token) []Token {
 	var out []Token
 	for i := 0; i < len(tokens); i++ {

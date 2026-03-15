@@ -1,17 +1,17 @@
 # Roadmap
 
-## Phase 2: Extended Compatibility
+## Phase 2: Extended Compatibility ✓ (v0.2.0)
 
-- `$$dollar-quoted$$` strings
-- `generate_series()` via recursive CTE rewriting
-- `to_char()` with full PG format string mapping
-- Regex operators (`~`, `~*`, `!~`, `!~*`) via custom functions
-- `SIMILAR TO` pattern translation
-- `NULLS FIRST` / `NULLS LAST` via CASE expression rewriting
-- `CREATE SEQUENCE` / `nextval()` / `currval()` emulation with a `_sequences` table
-- `INTERVAL` literal parsing and arithmetic
-- PG-style error codes in returned errors
-- `EXPLAIN` output formatted like PG
+- [x] `$$dollar-quoted$$` strings
+- [x] `generate_series()` via recursive CTE rewriting
+- [x] `to_char()` with full PG format string mapping
+- [x] Regex operators (`~`, `~*`, `!~`, `!~*`) via custom functions
+- [x] `SIMILAR TO` pattern translation
+- [x] `NULLS FIRST` / `NULLS LAST` via CASE expression rewriting
+- [x] `CREATE SEQUENCE` / `nextval()` / `currval()` emulation with a `_sequences` table
+- [x] `INTERVAL` literal parsing and arithmetic
+- [x] PG-style error codes in returned errors
+- [x] `EXPLAIN` output formatted like PG
 
 ## Phase 3: Advanced Features
 

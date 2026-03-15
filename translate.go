@@ -122,7 +122,7 @@ func Tokenize(sql string) []Token {
 		if ch == '/' && i+1 < n && runes[i+1] == '*' {
 			start := i
 			i += 2
-			for i+1 < n && !(runes[i] == '*' && runes[i+1] == '/') {
+			for i+1 < n && (runes[i] != '*' || runes[i+1] != '/') {
 				i++
 			}
 			if i+1 < n {

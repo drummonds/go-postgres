@@ -2,10 +2,10 @@ package pglike
 
 import (
 	"crypto/md5"
+	"crypto/rand"
 	"database/sql/driver"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"regexp"
 	"strings"
 	"time"

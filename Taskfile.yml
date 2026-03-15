@@ -1,6 +1,21 @@
 version: "3"
 
 tasks:
+  fmt:
+    desc: Format Go code
+    cmds:
+      - gofmt -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
   test:
     desc: Run all tests
     cmds:
@@ -11,10 +26,26 @@ tasks:
     cmds:
       - go build ./...
 
-
   check:
-    desc: Release steps
+    desc: Run fmt, vet, lint, and test
     cmds:
-      - task test
-      - task build
+      - task: fmt
+      - task: vet
+      - task: lint
+      - task: test
 
+  deps:tidy:
+    desc: Tidy Go module dependencies
+    cmds:
+      - go mod tidy
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - go clean ./...
+      - rm -rf docs/
+
+  docs:build:
+    desc: Build documentation
+    cmds:
+      - task-plus md2html --file index.md --dst docs
