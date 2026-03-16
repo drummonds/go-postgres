@@ -21,6 +21,11 @@ tasks:
     cmds:
       - go test -count=1 ./...
 
+  test:wasm:
+    desc: Run tests under wasip1/wasm via wazero
+    cmds:
+      - GOWASIRUNTIME=wazero GOOS=wasip1 GOARCH=wasm go test -exec "$(go env GOROOT)/lib/wasm/go_wasip1_wasm_exec" -count=1 ./...
+
   build:
     desc: Build all packages
     cmds:

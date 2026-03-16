@@ -3,154 +3,175 @@ package pglike
 import (
 	"crypto/md5"
 	"crypto/rand"
-	"database/sql/driver"
 	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"modernc.org/sqlite"
+	"github.com/ncruces/go-sqlite3"
 )
 
-// registerPGFunctions registers PostgreSQL-compatible functions in the SQLite engine.
-// These are registered globally and available on all connections.
-func registerPGFunctions() {
+// registerPGFunctions registers PostgreSQL-compatible functions on a SQLite connection.
+// Must be called for each new connection.
+func registerPGFunctions(conn *sqlite3.Conn) error {
 	// gen_random_uuid() -> UUID v4 string
-	sqlite.MustRegisterScalarFunction("gen_random_uuid", 0,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			return generateUUIDv4(), nil
+	err := conn.CreateFunction("gen_random_uuid", 0, 0,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			ctx.ResultText(generateUUIDv4())
 		},
 	)
+	if err != nil {
+		return err
+	}
 
 	// md5(string) -> hex MD5 hash
-	sqlite.MustRegisterDeterministicScalarFunction("md5", 1,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+	err = conn.CreateFunction("md5", 1, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			if arg[0].Type() == sqlite3.NULL {
+				ctx.ResultNull()
+				return
+			}
 			var data []byte
-			switch v := args[0].(type) {
-			case string:
-				data = []byte(v)
-			case []byte:
-				data = v
-			case nil:
-				return nil, nil
+			switch arg[0].Type() {
+			case sqlite3.TEXT:
+				data = []byte(arg[0].Text())
+			case sqlite3.BLOB:
+				data = arg[0].RawBlob()
 			default:
-				data = []byte(fmt.Sprint(v))
+				data = []byte(fmt.Sprint(arg[0].Text()))
 			}
 			h := md5.Sum(data)
-			return hex.EncodeToString(h[:]), nil
+			ctx.ResultText(hex.EncodeToString(h[:]))
 		},
 	)
+	if err != nil {
+		return err
+	}
 
 	// split_part(string, delimiter, field) -> nth field (1-indexed)
-	sqlite.MustRegisterDeterministicScalarFunction("split_part", 3,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			if args[0] == nil || args[1] == nil || args[2] == nil {
-				return nil, nil
+	err = conn.CreateFunction("split_part", 3, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			if arg[0].Type() == sqlite3.NULL || arg[1].Type() == sqlite3.NULL || arg[2].Type() == sqlite3.NULL {
+				ctx.ResultNull()
+				return
 			}
-			str, ok1 := args[0].(string)
-			delim, ok2 := args[1].(string)
-			field, ok3 := args[2].(int64)
-			if !ok1 || !ok2 || !ok3 {
-				return "", nil
-			}
+			str := arg[0].Text()
+			delim := arg[1].Text()
+			field := arg[2].Int64()
 			parts := strings.Split(str, delim)
 			idx := int(field) - 1 // PG is 1-indexed
 			if idx < 0 || idx >= len(parts) {
-				return "", nil
+				ctx.ResultText("")
+				return
 			}
-			return parts[idx], nil
+			ctx.ResultText(parts[idx])
 		},
 	)
+	if err != nil {
+		return err
+	}
 
 	// pg_regex_match(str, pattern, case_insensitive) -> 1 if matches, 0 otherwise
-	sqlite.MustRegisterDeterministicScalarFunction("pg_regex_match", 3,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			if args[0] == nil || args[1] == nil {
-				return int64(0), nil
+	err = conn.CreateFunction("pg_regex_match", 3, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			if arg[0].Type() == sqlite3.NULL || arg[1].Type() == sqlite3.NULL {
+				ctx.ResultInt64(0)
+				return
 			}
-			str, ok1 := args[0].(string)
-			pattern, ok2 := args[1].(string)
-			if !ok1 || !ok2 {
-				return int64(0), nil
-			}
-			caseInsensitive, _ := args[2].(int64)
+			str := arg[0].Text()
+			pattern := arg[1].Text()
+			caseInsensitive := arg[2].Int64()
 			if caseInsensitive == 1 {
 				pattern = "(?i)" + pattern
 			}
 			matched, err := regexp.MatchString(pattern, str)
 			if err != nil {
-				return int64(0), nil
+				ctx.ResultInt64(0)
+				return
 			}
 			if matched {
-				return int64(1), nil
+				ctx.ResultInt64(1)
+			} else {
+				ctx.ResultInt64(0)
 			}
-			return int64(0), nil
 		},
 	)
+	if err != nil {
+		return err
+	}
 
 	// pg_to_char(datetime_text, pg_format) -> formatted string
-	sqlite.MustRegisterDeterministicScalarFunction("pg_to_char", 2,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			if args[0] == nil || args[1] == nil {
-				return nil, nil
+	err = conn.CreateFunction("pg_to_char", 2, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			if arg[0].Type() == sqlite3.NULL || arg[1].Type() == sqlite3.NULL {
+				ctx.ResultNull()
+				return
 			}
-			dtStr, ok1 := args[0].(string)
-			pgFmt, ok2 := args[1].(string)
-			if !ok1 || !ok2 {
-				return nil, nil
-			}
+			dtStr := arg[0].Text()
+			pgFmt := arg[1].Text()
 			t, err := parseDateTime(dtStr)
 			if err != nil {
-				return dtStr, nil
+				ctx.ResultText(dtStr)
+				return
 			}
-			return formatPGStyle(t, pgFmt), nil
+			ctx.ResultText(formatPGStyle(t, pgFmt))
 		},
 	)
+	if err != nil {
+		return err
+	}
 
 	// pg_similar_match(str, pattern) -> 1 if matches SQL SIMILAR TO pattern, 0 otherwise
-	// SIMILAR TO patterns use: % (any string), _ (any char), | (alternation), () (grouping)
-	sqlite.MustRegisterDeterministicScalarFunction("pg_similar_match", 2,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			if args[0] == nil || args[1] == nil {
-				return int64(0), nil
+	err = conn.CreateFunction("pg_similar_match", 2, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			if arg[0].Type() == sqlite3.NULL || arg[1].Type() == sqlite3.NULL {
+				ctx.ResultInt64(0)
+				return
 			}
-			str, ok1 := args[0].(string)
-			pattern, ok2 := args[1].(string)
-			if !ok1 || !ok2 {
-				return int64(0), nil
-			}
+			str := arg[0].Text()
+			pattern := arg[1].Text()
 			re := convertSimilarToRegex(pattern)
 			matched, err := regexp.MatchString(re, str)
 			if err != nil {
-				return int64(0), nil
+				ctx.ResultInt64(0)
+				return
 			}
 			if matched {
-				return int64(1), nil
+				ctx.ResultInt64(1)
+			} else {
+				ctx.ResultInt64(0)
 			}
-			return int64(0), nil
 		},
 	)
+	if err != nil {
+		return err
+	}
 
 	// pg_typeof(expr) -> type name as string
-	sqlite.MustRegisterScalarFunction("pg_typeof", 1,
-		func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-			switch args[0].(type) {
-			case nil:
-				return "unknown", nil
-			case int64:
-				return "integer", nil
-			case float64:
-				return "double precision", nil
-			case string:
-				return "text", nil
-			case []byte:
-				return "bytea", nil
+	err = conn.CreateFunction("pg_typeof", 1, 0,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			switch arg[0].Type() {
+			case sqlite3.NULL:
+				ctx.ResultText("unknown")
+			case sqlite3.INTEGER:
+				ctx.ResultText("integer")
+			case sqlite3.FLOAT:
+				ctx.ResultText("double precision")
+			case sqlite3.TEXT:
+				ctx.ResultText("text")
+			case sqlite3.BLOB:
+				ctx.ResultText("bytea")
 			default:
-				return "unknown", nil
+				ctx.ResultText("unknown")
 			}
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // parseDateTime parses a datetime string in common SQLite/ISO formats.

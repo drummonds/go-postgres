@@ -8,30 +8,22 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/ncruces/go-sqlite3"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 func init() {
 	sql.Register("pglike", &Driver{})
-	registerPGFunctions()
 }
 
-// Driver wraps the modernc.org/sqlite driver with PostgreSQL SQL translation.
+// Driver wraps the ncruces/go-sqlite3 driver with PostgreSQL SQL translation.
 type Driver struct{}
 
 // Open parses the DSN and opens a SQLite connection via the underlying driver.
 func (d *Driver) Open(dsn string) (driver.Conn, error) {
 	sqliteDSN := parseDSN(dsn)
 
-	// Open via the registered sqlite driver
-	db, err := sql.Open("sqlite", sqliteDSN)
-	if err != nil {
-		return nil, err
-	}
-	// We need a raw driver.Conn; get one from the underlying sqlite driver
-	_ = db.Close()
-
-	// Use the sqlite driver directly
 	sqliteDriver := getSQLiteDriver()
 	if sqliteDriver == nil {
 		return nil, sql.ErrConnDone
@@ -42,19 +34,28 @@ func (d *Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	// Ensure _sequences table exists for sequence emulation
-	if execer, ok := inner.(interface {
-		Exec(query string, args []driver.Value) (driver.Result, error)
-	}); ok {
-		execer.Exec("CREATE TABLE IF NOT EXISTS _sequences (name TEXT PRIMARY KEY, current_value INTEGER NOT NULL DEFAULT 0, increment INTEGER NOT NULL DEFAULT 1)", nil) //nolint:errcheck
+	// Register PG-compatible functions on this connection.
+	type rawConn interface {
+		Raw() *sqlite3.Conn
+	}
+	if rc, ok := inner.(rawConn); ok {
+		if err := registerPGFunctions(rc.Raw()); err != nil {
+			inner.Close()
+			return nil, err
+		}
 	}
 
-	return &conn{inner: inner}, nil
+	c := &conn{inner: inner}
+
+	// Ensure _sequences table exists for sequence emulation.
+	_ = c.execDirect("CREATE TABLE IF NOT EXISTS _sequences (name TEXT PRIMARY KEY, current_value INTEGER NOT NULL DEFAULT 0, increment INTEGER NOT NULL DEFAULT 1)")
+
+	return c, nil
 }
 
-// getSQLiteDriver retrieves the registered "sqlite" driver.
+// getSQLiteDriver retrieves the registered "sqlite3" driver.
 func getSQLiteDriver() driver.Driver {
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil
 	}
@@ -115,19 +116,20 @@ func (c *conn) execDirect(sql string) error {
 }
 
 // queryDirectInt64 executes a query and returns a single int64 value.
-func (c *conn) queryDirectInt64(sql string) (int64, error) {
-	s, err := c.inner.Prepare(sql)
+func (c *conn) queryDirectInt64(sqlStr string) (int64, error) {
+	s, err := c.inner.Prepare(sqlStr)
 	if err != nil {
 		return 0, err
 	}
 	defer s.Close()
-	rows, err := s.Query(nil) //nolint:staticcheck
+	r, err := s.Query(nil) //nolint:staticcheck
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer r.Close()
+	_ = r.Columns() // ncruces requires Columns() before Next()
 	dest := make([]driver.Value, 1)
-	if err := rows.Next(dest); err != nil {
+	if err := r.Next(dest); err != nil {
 		return 0, err
 	}
 	if v, ok := dest[0].(int64); ok {

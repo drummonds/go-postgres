@@ -3,6 +3,7 @@ package pglike
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 	"strings"
 )
 
@@ -12,7 +13,6 @@ var (
 	_ driver.ConnBeginTx        = (*conn)(nil)
 	_ driver.ConnPrepareContext = (*conn)(nil)
 	_ driver.ExecerContext      = (*conn)(nil)
-	_ driver.QueryerContext     = (*conn)(nil)
 	_ driver.StmtExecContext    = (*stmt)(nil)
 	_ driver.StmtQueryContext   = (*stmt)(nil)
 )
@@ -54,7 +54,11 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		}
 		return &stmt{inner: s}, nil
 	}
-	return c.Prepare(query)
+	s, err := c.inner.Prepare(translated)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return &stmt{inner: s}, nil
 }
 
 // ExecContext implements driver.ExecerContext.
@@ -68,8 +72,39 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		return nil, err
 	}
 	suppressDupCol := isAlterAddColumnIfNotExists(query)
+
+	// Try fast path via inner ExecerContext.
 	if execer, ok := c.inner.(driver.ExecerContext); ok {
 		r, err := execer.ExecContext(ctx, translated, args)
+		if err == nil {
+			return &result{inner: r}, nil
+		}
+		if !errors.Is(err, driver.ErrSkip) {
+			if suppressDupCol && isDuplicateColumnError(err) {
+				return driver.ResultNoRows, nil
+			}
+			return nil, wrapError(err)
+		}
+		// ErrSkip: fall through to prepare+exec
+	}
+
+	// Prepare+Exec on inner conn directly (already translated).
+	var s driver.Stmt
+	if preparer, ok := c.inner.(driver.ConnPrepareContext); ok {
+		s, err = preparer.PrepareContext(ctx, translated)
+	} else {
+		s, err = c.inner.Prepare(translated)
+	}
+	if err != nil {
+		if suppressDupCol && isDuplicateColumnError(err) {
+			return driver.ResultNoRows, nil
+		}
+		return nil, wrapError(err)
+	}
+	defer s.Close()
+
+	if stmtExecer, ok := s.(driver.StmtExecContext); ok {
+		r, err := stmtExecer.ExecContext(ctx, args)
 		if err != nil {
 			if suppressDupCol && isDuplicateColumnError(err) {
 				return driver.ResultNoRows, nil
@@ -78,48 +113,14 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		}
 		return &result{inner: r}, nil
 	}
-	// Fallback to Prepare + Exec
-	s, err := c.Prepare(translated)
+	r, err := s.Exec(namedToValues(args)) //nolint:staticcheck
 	if err != nil {
 		if suppressDupCol && isDuplicateColumnError(err) {
 			return driver.ResultNoRows, nil
 		}
-		return nil, err
+		return nil, wrapError(err)
 	}
-	defer s.Close()
-	values := namedToValues(args)
-	r, err := s.Exec(values) //nolint:staticcheck // intentional fallback for older driver interfaces
-	if err != nil && suppressDupCol && isDuplicateColumnError(err) {
-		return driver.ResultNoRows, nil
-	}
-	return r, err
-}
-
-// QueryContext implements driver.QueryerContext.
-func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	translated, err := Translate(query)
-	if err != nil {
-		return nil, err
-	}
-	translated, err = c.resolveSequenceCalls(translated)
-	if err != nil {
-		return nil, err
-	}
-	if queryer, ok := c.inner.(driver.QueryerContext); ok {
-		r, err := queryer.QueryContext(ctx, translated, args)
-		if err != nil {
-			return nil, wrapError(err)
-		}
-		return &rows{inner: r}, nil
-	}
-	// Fallback to Prepare + Query
-	s, err := c.Prepare(translated)
-	if err != nil {
-		return nil, err
-	}
-	defer s.Close()
-	values := namedToValues(args)
-	return s.Query(values) //nolint:staticcheck // intentional fallback for older driver interfaces
+	return &result{inner: r}, nil
 }
 
 // ExecContext implements driver.StmtExecContext.
@@ -132,7 +133,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return &result{inner: r}, nil
 	}
 	values := namedToValues(args)
-	return s.Exec(values) //nolint:staticcheck // intentional fallback for older driver interfaces
+	return s.Exec(values) //nolint:staticcheck
 }
 
 // QueryContext implements driver.StmtQueryContext.
@@ -145,7 +146,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		return &rows{inner: r}, nil
 	}
 	values := namedToValues(args)
-	return s.Query(values) //nolint:staticcheck // intentional fallback for older driver interfaces
+	return s.Query(values) //nolint:staticcheck
 }
 
 // namedToValues converts NamedValue args to positional Value args.
