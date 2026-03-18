@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-18
+
+ - making splits safe
+
 ## [0.4.2] - 2026-03-18
 
  - fixing lint isue
