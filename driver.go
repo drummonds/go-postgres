@@ -1,10 +1,12 @@
 package pglike
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -17,13 +19,63 @@ func init() {
 	sql.Register("pglike", &Driver{})
 }
 
+// Compile-time interface check.
+var _ driver.DriverContext = (*Driver)(nil)
+
 // Driver wraps the ncruces/go-sqlite3 driver with PostgreSQL SQL translation.
 type Driver struct{}
 
+// OpenConnector implements driver.DriverContext.
+// For :memory: DSNs, it creates a unique temp file so all pool connections
+// share the same database (ncruces WASM doesn't support shared-cache in-memory).
+func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
+	sqliteDSN := parseDSN(name)
+	c := &pglikeConnector{dsn: sqliteDSN, driver: d}
+	if name == ":memory:" {
+		f, err := os.CreateTemp("", "pglike-*.db")
+		if err != nil {
+			return nil, fmt.Errorf("pglike: temp file for :memory: db: %w", err)
+		}
+		c.dsn = f.Name()
+		c.tmpFile = f.Name()
+		f.Close()
+	}
+	return c, nil
+}
+
+// pglikeConnector implements driver.Connector.
+type pglikeConnector struct {
+	dsn     string
+	tmpFile string // non-empty for :memory: DSNs; cleaned up via Close
+	driver  *Driver
+}
+
+func (c *pglikeConnector) Connect(_ context.Context) (driver.Conn, error) {
+	return c.driver.openConn(c.dsn)
+}
+
+func (c *pglikeConnector) Driver() driver.Driver {
+	return c.driver
+}
+
+// Close removes the temp file backing a :memory: database.
+// Called automatically by sql.DB.Close() via io.Closer.
+func (c *pglikeConnector) Close() error {
+	if c.tmpFile != "" {
+		os.Remove(c.tmpFile + "-wal")
+		os.Remove(c.tmpFile + "-shm")
+		return os.Remove(c.tmpFile)
+	}
+	return nil
+}
+
 // Open parses the DSN and opens a SQLite connection via the underlying driver.
 func (d *Driver) Open(dsn string) (driver.Conn, error) {
-	sqliteDSN := parseDSN(dsn)
+	return d.openConn(parseDSN(dsn))
+}
 
+// openConn opens a SQLite connection with the given (already-parsed) DSN.
+func (d *Driver) openConn(sqliteDSN string) (driver.Conn, error) {
 	sqliteDriver := getSQLiteDriver()
 	if sqliteDriver == nil {
 		return nil, sql.ErrConnDone

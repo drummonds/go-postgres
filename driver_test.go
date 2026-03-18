@@ -876,6 +876,44 @@ func TestDriverAlterTableAddColumnIfNotExists(t *testing.T) {
 	}
 }
 
+func TestDriverMemoryPoolSharing(t *testing.T) {
+	db, err := sql.Open("pglike", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+
+	// Allow multiple connections to exercise pooling.
+	db.SetMaxOpenConns(2)
+
+	_, err = db.Exec("CREATE TABLE pool_test (id INTEGER PRIMARY KEY, val TEXT)")
+	if err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	_, err = db.Exec("INSERT INTO pool_test VALUES (1, 'hello')")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	// Hold one connection open while querying on another.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	// This query must use a second connection from the pool.
+	// Without shared cache it would hit a separate empty database.
+	var val string
+	err = db.QueryRow("SELECT val FROM pool_test WHERE id = 1").Scan(&val)
+	if err != nil {
+		t.Fatalf("SELECT on second conn: %v", err)
+	}
+	if val != "hello" {
+		t.Errorf("val = %q, want hello", val)
+	}
+}
+
 func TestDriverNumericPrecision(t *testing.T) {
 	db := openTestDB(t)
 
