@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-18
+
+ - fix linting
+
 ## [0.4.0] - 2026-03-16
 
  - switching to ncruces/sqlite
