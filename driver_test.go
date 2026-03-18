@@ -900,7 +900,7 @@ func TestDriverMemoryPoolSharing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// This query must use a second connection from the pool.
 	// Without shared cache it would hit a separate empty database.
