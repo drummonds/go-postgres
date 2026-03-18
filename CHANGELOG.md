@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-18
+
+ - fixing lint isue
+
 ### Fixed
 - `:memory:` connection pooling now works under WASM (wasip1) — falls back to single shared connection when temp files can't be shared across ncruces module instances
 
