@@ -1,6 +1,6 @@
 # go-postgres
 
-A lightweight, pure Go `database/sql` driver that accepts PostgreSQL SQL syntax but executes against SQLite under the hood via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite). This lets Go applications written for PostgreSQL run against a local SQLite file -- ideal for testing, embedded use, CLI tools, and development environments. Files remain SQLite-compatible.
+A lightweight, pure Go `database/sql` driver that accepts PostgreSQL SQL syntax but executes against SQLite under the hood via [ncruces/go-sqlite3](https://github.com/ncruces/go-sqlite3). This lets Go applications written for PostgreSQL run against a local SQLite file -- ideal for testing, embedded use, CLI tools, and development environments. Files remain SQLite-compatible.
 
 The driver registers as `"pglike"` to avoid conflicts with existing PG drivers (`lib/pq`, `pgx`).
 
@@ -61,7 +61,7 @@ go-postgres driver (this project)
     |  2. Register PG-compatible functions
     |  3. Delegate to SQLite engine
     v
-modernc.org/sqlite (pure Go SQLite engine)
+ncruces/go-sqlite3 (SQLite via WASM/wazero)
     |
     v
 SQLite database file
@@ -75,7 +75,7 @@ The driver accepts several DSN formats:
 |--------|---------|-----------|
 | SQLite file path | `myapp.db` | Opens the file directly |
 | SQLite URI | `file:myapp.db?_pragma=foreign_keys(1)` | Passed through to SQLite |
-| In-memory | `:memory:` | SQLite in-memory database |
+| In-memory | `:memory:` | SQLite in-memory database (pooling handled automatically) |
 | PostgreSQL URL | `postgres://user:pass@localhost/myapp` | Extracts `myapp` as filename `myapp.db` |
 | PG key=value | `host=localhost dbname=myapp` | Extracts `myapp` as filename `myapp.db` |
 
@@ -151,13 +151,31 @@ These functions are registered as SQLite custom functions and can be called dire
 | `split_part(string, delimiter, field)` | Returns the nth field (1-indexed) |
 | `pg_typeof(expr)` | Returns the SQLite type name of the expression |
 
+## WASM Support
+
+The driver works under `GOOS=wasip1 GOARCH=wasm`. The underlying SQLite engine (`ncruces/go-sqlite3`) runs SQLite itself as WASM via wazero, so there is no CGo dependency.
+
+### `:memory:` connection pooling
+
+Go's `database/sql` connection pool can open multiple connections. With `:memory:`, each connection normally gets its own empty database. The driver handles this automatically:
+
+- **Native**: creates a temp file so all pool connections share one database (full concurrency)
+- **WASM**: ncruces WASM modules have isolated filesystems, so temp files can't be shared across connections. The driver detects this and falls back to a single shared connection with mutex serialization.
+
+No user configuration is needed — `sql.Open("pglike", ":memory:")` works correctly in both environments.
+
+### Running tests under WASM
+
+```bash
+task test:wasm
+```
+
 ## File Structure
 
 ```
 go-postgres/
-  go.mod                    Module definition
-  driver.go                 Driver registration, conn/stmt/rows/tx/result wrappers, DSN parsing
-  driver_go18.go            Go 1.8+ context-aware interfaces
+  driver.go                 Driver, connector, DSN parsing, connection pooling
+  driver_go18.go            Context-aware interfaces
   translate.go              Core tokenizer + translation pipeline
   translate_ddl.go          DDL type mappings (SERIAL, BOOLEAN, VARCHAR, etc.)
   translate_expr.go         Expression translations (::cast, ILIKE, TRUE/FALSE, E'strings')
@@ -168,10 +186,10 @@ go-postgres/
   translate_sequence.go     CREATE/DROP SEQUENCE emulation
   pgfuncs.go                PG-compat functions registered in SQLite
   pgerror.go                PG SQLSTATE error code wrapping
-  translate_test.go         Unit tests for all translations
   driver_test.go            Integration tests (full SQL round-trips)
+  translate_test.go         Unit tests for all translations
+  wasm_test.go              WASM cross-compilation tests
   example/main.go           Usage example
-  ROADMAP.md                Development roadmap
 ```
 
 ## Links

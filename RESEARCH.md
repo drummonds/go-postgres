@@ -7,8 +7,8 @@
 ## What It Is
 
 A pure Go `database/sql` driver registered as `"pglike"` that accepts PostgreSQL SQL,
-translates it to SQLite-compatible SQL at runtime, and executes against `modernc.org/sqlite`.
-Zero CGo. ~5000 lines of Go.
+translates it to SQLite-compatible SQL at runtime, and executes against `ncruces/go-sqlite3`
+(SQLite compiled to WASM, run via wazero — no CGo). ~5300 lines of Go.
 
 Module: `github.com/drummonds/go-postgres`
 
@@ -270,6 +270,20 @@ including through parenthesized function calls.
 
 ## Driver Layer (driver.go, driver_go18.go)
 
+### Connection Pooling (`:memory:`)
+
+`database/sql` pools connections. For `:memory:`, each `Open()` call creates an isolated
+database. The driver implements `driver.DriverContext.OpenConnector()` to handle this:
+
+1. **Probe**: `tryTempFile()` creates a temp file, writes from connection 1, reads from
+   connection 2. If both work, the temp file is used as the shared backing store.
+2. **Fallback**: If the probe fails (WASM — ncruces modules have isolated filesystems),
+   the connector keeps a single real connection and hands out `sharedConn` wrappers that
+   serialize access via mutex.
+
+The `pglikeConnector` implements `io.Closer` — `db.Close()` cleans up temp files or the
+shared connection.
+
 ### DSN Parsing
 
 - SQLite paths: `myapp.db`, `file:...`, `:memory:` → pass through
@@ -303,7 +317,7 @@ SQLite errors are wrapped with PostgreSQL SQLSTATE codes:
 
 ## Custom SQLite Functions (pgfuncs.go)
 
-Registered via `modernc.org/sqlite` scalar function API at driver init.
+Registered via `ncruces/go-sqlite3` scalar function API on each new connection.
 
 | Function | Behavior |
 |---|---|
@@ -349,7 +363,14 @@ embedded/testing use, not suitable for high-throughput OLTP.
 Only handles `FROM generate_series(...)` — not subqueries or joins with generate_series.
 The CTE prepend restructures the whole query.
 
-### 6. SIMILAR TO Regex Conversion
+### 6. WASM `:memory:` Concurrency
+
+Under WASM (`wasip1`), `:memory:` databases use a single shared connection with mutex
+serialization. This means all pool connections are serialized — fine for testing, but
+not suitable for concurrent workloads. File-based DSNs are unaffected (each connection
+opens the file independently).
+
+### 7. SIMILAR TO Regex Conversion
 
 `convertSimilarToRegex()` does basic `%`→`.*` and `_`→`.` conversion but doesn't handle
 all SQL SIMILAR TO edge cases (character classes with special escaping, etc.).
@@ -372,17 +393,18 @@ malformed SQL inputs, concurrent sequence access.
 | File | Lines | Purpose |
 |---|---|---|
 | translate.go | 478 | Tokenizer + pipeline orchestration |
-| translate_ddl.go | 423 | Type mapping, SERIAL, DEFAULT functions |
-| translate_expr.go | 490 | Casts, regex, booleans, ILIKE, escape strings |
+| translate_ddl.go | 425 | Type mapping, SERIAL, DEFAULT functions |
+| translate_expr.go | 491 | Casts, regex, booleans, ILIKE, escape strings |
 | translate_func.go | 512 | Date/time/string function translation |
 | translate_genseries.go | 136 | generate_series → recursive CTE |
 | translate_interval.go | 96 | INTERVAL arithmetic |
 | translate_sequence.go | 151 | CREATE/DROP SEQUENCE |
 | translate_order.go | 155 | NULLS FIRST/LAST |
-| driver.go | 343 | Driver wrapper, DSN, sequences |
-| driver_go18.go | 171 | Context-aware methods |
-| pgfuncs.go | 244 | Custom SQLite function registration |
+| driver.go | 495 | Driver, connector, DSN, connection pooling, sequences |
+| driver_go18.go | 172 | Context-aware methods |
+| pgfuncs.go | 265 | Custom SQLite function registration |
 | pgerror.go | 64 | PG SQLSTATE error wrapping |
+| driver_test.go | 990 | Integration tests |
 | translate_test.go | 810 | Translation unit tests |
-| driver_test.go | 875 | Integration tests |
+| wasm_test.go | 74 | WASM cross-compilation tests |
 | example/main.go | 73 | Usage example |

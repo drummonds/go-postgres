@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ncruces/go-sqlite3"
@@ -26,31 +27,44 @@ var _ driver.DriverContext = (*Driver)(nil)
 type Driver struct{}
 
 // OpenConnector implements driver.DriverContext.
-// For :memory: DSNs, it creates a unique temp file so all pool connections
-// share the same database (ncruces WASM doesn't support shared-cache in-memory).
+// For :memory: DSNs, it tries a temp file so pool connections share one database.
+// If temp file creation fails (e.g. WASM), it falls back to a single shared
+// connection protected by a mutex.
 func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 	sqliteDSN := parseDSN(name)
 	c := &pglikeConnector{dsn: sqliteDSN, driver: d}
+
 	if name == ":memory:" {
-		f, err := os.CreateTemp("", "pglike-*.db")
-		if err != nil {
-			return nil, fmt.Errorf("pglike: temp file for :memory: db: %w", err)
+		if tmpDSN, ok := tryTempFile(); ok {
+			// Temp file works — all pool connections share this file.
+			c.dsn = tmpDSN
+			c.tmpFile = tmpDSN
+		} else {
+			// No usable filesystem (WASM) — single shared connection.
+			inner, err := d.openConn(sqliteDSN)
+			if err != nil {
+				return nil, err
+			}
+			c.shared = inner
 		}
-		c.dsn = f.Name()
-		c.tmpFile = f.Name()
-		f.Close()
 	}
+
 	return c, nil
 }
 
 // pglikeConnector implements driver.Connector.
 type pglikeConnector struct {
 	dsn     string
-	tmpFile string // non-empty for :memory: DSNs; cleaned up via Close
+	tmpFile string      // non-empty when backed by temp file
+	shared  driver.Conn // non-nil when using single shared connection (WASM)
+	mu      sync.Mutex  // guards shared connection access
 	driver  *Driver
 }
 
 func (c *pglikeConnector) Connect(_ context.Context) (driver.Conn, error) {
+	if c.shared != nil {
+		return &sharedConn{real: c.shared, mu: &c.mu}, nil
+	}
 	return c.driver.openConn(c.dsn)
 }
 
@@ -58,15 +72,99 @@ func (c *pglikeConnector) Driver() driver.Driver {
 	return c.driver
 }
 
-// Close removes the temp file backing a :memory: database.
-// Called automatically by sql.DB.Close() via io.Closer.
+// Close cleans up temp files or the shared connection.
 func (c *pglikeConnector) Close() error {
+	if c.shared != nil {
+		return c.shared.Close()
+	}
 	if c.tmpFile != "" {
 		os.Remove(c.tmpFile + "-wal")
 		os.Remove(c.tmpFile + "-shm")
 		return os.Remove(c.tmpFile)
 	}
 	return nil
+}
+
+// sharedConn wraps a single real connection with a mutex so the pool
+// can hand out multiple "connections" that serialise on one underlying conn.
+type sharedConn struct {
+	real driver.Conn
+	mu   *sync.Mutex
+}
+
+func (s *sharedConn) Prepare(query string) (driver.Stmt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.real.Prepare(query)
+}
+
+func (s *sharedConn) Begin() (driver.Tx, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.real.Begin() //nolint:staticcheck
+}
+
+// Close is a no-op — the real connection is owned by the connector.
+func (s *sharedConn) Close() error { return nil }
+
+// tryTempFile creates a temp file and verifies two separate SQLite connections
+// can share data through it. ncruces WASM modules have isolated filesystems,
+// so this test fails in WASM even though os.CreateTemp succeeds.
+// Returns the file path and true on success, or cleans up and returns false.
+func tryTempFile() (string, bool) {
+	f, err := os.CreateTemp("", "pglike-*.db")
+	if err != nil {
+		return "", false
+	}
+	name := f.Name()
+	f.Close()
+
+	drv := getSQLiteDriver()
+	if drv == nil {
+		os.Remove(name)
+		return "", false
+	}
+
+	// Write a marker table from connection 1.
+	c1, err := drv.Open(name)
+	if err != nil {
+		os.Remove(name)
+		return "", false
+	}
+	s, err := c1.Prepare("CREATE TABLE _pglike_probe (v INTEGER)")
+	if err != nil {
+		c1.Close()
+		os.Remove(name)
+		return "", false
+	}
+	s.Exec(nil) //nolint:staticcheck
+	s.Close()
+	c1.Close()
+
+	// Verify connection 2 can see the table.
+	c2, err := drv.Open(name)
+	if err != nil {
+		os.Remove(name)
+		return "", false
+	}
+	s2, err := c2.Prepare("SELECT v FROM _pglike_probe LIMIT 0")
+	if err != nil {
+		// Second connection can't see the table — isolated FS.
+		c2.Close()
+		os.Remove(name)
+		return "", false
+	}
+	s2.Close()
+
+	// Clean up probe table.
+	s3, _ := c2.Prepare("DROP TABLE _pglike_probe")
+	if s3 != nil {
+		s3.Exec(nil) //nolint:staticcheck
+		s3.Close()
+	}
+	c2.Close()
+
+	return name, true
 }
 
 // Open parses the DSN and opens a SQLite connection via the underlying driver.

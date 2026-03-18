@@ -1,6 +1,6 @@
 # go-postgres
 
-A lightweight, pure Go `database/sql` driver that accepts PostgreSQL SQL syntax but executes against SQLite under the hood via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite).
+A lightweight, pure Go `database/sql` driver that accepts PostgreSQL SQL syntax but executes against SQLite under the hood via [ncruces/go-sqlite3](https://github.com/ncruces/go-sqlite3).
 
 This lets Go applications written for PostgreSQL run against a local SQLite file — ideal for testing, embedded use, CLI tools, and development environments. Files remain SQLite-compatible.
 
