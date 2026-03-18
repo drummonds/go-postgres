@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -62,17 +63,54 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 }
 
 // ExecContext implements driver.ExecerContext.
+// It supports multiple semicolon-separated statements in a single call,
+// matching PostgreSQL's behavior. Each statement is translated and executed
+// individually. The result from the last statement is returned.
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	translated, err := Translate(query)
+	stmts, err := TranslateMulti(query)
 	if err != nil {
 		return nil, err
 	}
-	translated, err = c.resolveSequenceCalls(translated)
-	if err != nil {
-		return nil, err
-	}
-	suppressDupCol := isAlterAddColumnIfNotExists(query)
 
+	// Single statement — use fast path.
+	if len(stmts) == 1 {
+		resolved, err := c.resolveSequenceCalls(stmts[0].SQL)
+		if err != nil {
+			return nil, err
+		}
+		return c.execTranslated(ctx, resolved, args, isAlterAddColumnIfNotExists(query))
+	}
+
+	// Multi-statement — execute each individually, splitting args by param count.
+	argOffset := 0
+	var lastResult driver.Result = driver.ResultNoRows
+	for _, ts := range stmts {
+		resolved, err := c.resolveSequenceCalls(ts.SQL)
+		if err != nil {
+			return nil, err
+		}
+
+		var stmtArgs []driver.NamedValue
+		if ts.NumParams > 0 {
+			if argOffset+ts.NumParams > len(args) {
+				return nil, fmt.Errorf("pglike: multi-statement exec: need %d args for statement, have %d remaining",
+					ts.NumParams, len(args)-argOffset)
+			}
+			stmtArgs = renumberArgs(args[argOffset : argOffset+ts.NumParams])
+			argOffset += ts.NumParams
+		}
+
+		r, err := c.execTranslated(ctx, resolved, stmtArgs, isAlterAddColumnIfNotExists(resolved))
+		if err != nil {
+			return nil, err
+		}
+		lastResult = r
+	}
+	return lastResult, nil
+}
+
+// execTranslated executes a single already-translated SQL statement on the inner connection.
+func (c *conn) execTranslated(ctx context.Context, translated string, args []driver.NamedValue, suppressDupCol bool) (driver.Result, error) {
 	// Try fast path via inner ExecerContext.
 	if execer, ok := c.inner.(driver.ExecerContext); ok {
 		r, err := execer.ExecContext(ctx, translated, args)
@@ -90,6 +128,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 
 	// Prepare+Exec on inner conn directly (already translated).
 	var s driver.Stmt
+	var err error
 	if preparer, ok := c.inner.(driver.ConnPrepareContext); ok {
 		s, err = preparer.PrepareContext(ctx, translated)
 	} else {
@@ -121,6 +160,15 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		return nil, wrapError(err)
 	}
 	return &result{inner: r}, nil
+}
+
+// renumberArgs creates a copy of args with ordinals renumbered starting from 1.
+func renumberArgs(args []driver.NamedValue) []driver.NamedValue {
+	out := make([]driver.NamedValue, len(args))
+	for i, a := range args {
+		out[i] = driver.NamedValue{Ordinal: i + 1, Value: a.Value}
+	}
+	return out
 }
 
 // ExecContext implements driver.StmtExecContext.

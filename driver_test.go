@@ -988,3 +988,91 @@ func TestDriverNumericCast(t *testing.T) {
 		t.Errorf("CAST result = %s, want %s", d, want)
 	}
 }
+
+func TestDriverMultiStatementExec(t *testing.T) {
+	db := openTestDB(t)
+
+	// Multi-statement DDL: create table + index in one Exec call.
+	_, err := db.Exec(`
+		CREATE TABLE multi_test (
+			id UUID DEFAULT (gen_random_uuid()) PRIMARY KEY,
+			name VARCHAR(100) NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);
+		CREATE INDEX idx_multi_test_name ON multi_test (name);
+	`)
+	if err != nil {
+		t.Fatalf("multi-statement DDL: %v", err)
+	}
+
+	// Verify table and index exist by inserting and querying.
+	_, err = db.Exec("INSERT INTO multi_test (name) VALUES (?)", "Alice")
+	if err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	var name string
+	err = db.QueryRow("SELECT name FROM multi_test").Scan(&name)
+	if err != nil {
+		t.Fatalf("SELECT: %v", err)
+	}
+	if name != "Alice" {
+		t.Errorf("name = %q, want Alice", name)
+	}
+}
+
+func TestDriverMultiStatementSchema(t *testing.T) {
+	db := openTestDB(t)
+
+	// Simulate a real schema creation scenario (the original bug).
+	schema := `
+		CREATE TABLE IF NOT EXISTS accounts (
+			id UUID DEFAULT (gen_random_uuid()) PRIMARY KEY,
+			name VARCHAR(100) NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);
+		CREATE TABLE IF NOT EXISTS transactions (
+			id UUID DEFAULT (gen_random_uuid()) PRIMARY KEY,
+			account_id TEXT NOT NULL,
+			amount NUMERIC(20,2) NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions (account_id);
+	`
+	_, err := db.Exec(schema)
+	if err != nil {
+		t.Fatalf("multi-statement schema: %v", err)
+	}
+
+	// Verify both tables work.
+	_, err = db.Exec("INSERT INTO accounts (name) VALUES (?)", "TestCo")
+	if err != nil {
+		t.Fatalf("INSERT accounts: %v", err)
+	}
+
+	var count int
+	err = db.QueryRow("SELECT count(*) FROM accounts").Scan(&count)
+	if err != nil {
+		t.Fatalf("SELECT accounts: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("accounts count = %d, want 1", count)
+	}
+}
+
+func TestDriverMultiStatementIdempotent(t *testing.T) {
+	db := openTestDB(t)
+
+	// Running the same multi-statement schema twice should not error
+	// (thanks to IF NOT EXISTS).
+	schema := `
+		CREATE TABLE IF NOT EXISTS idempotent_test (id INTEGER PRIMARY KEY);
+		CREATE INDEX IF NOT EXISTS idx_idempotent ON idempotent_test (id);
+	`
+	for i := range 2 {
+		_, err := db.Exec(schema)
+		if err != nil {
+			t.Fatalf("run %d: %v", i+1, err)
+		}
+	}
+}

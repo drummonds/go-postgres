@@ -362,9 +362,8 @@ func Reassemble(tokens []Token) string {
 	return b.String()
 }
 
-// Translate converts PostgreSQL SQL to SQLite-compatible SQL.
-func Translate(sql string) (string, error) {
-	tokens := Tokenize(sql)
+// translateTokens applies all translation passes to a token stream.
+func translateTokens(tokens []Token) []Token {
 	tokens = translateExplain(tokens)
 	tokens = translateGenerateSeries(tokens)
 	tokens = translateSequenceDDL(tokens)
@@ -374,7 +373,79 @@ func Translate(sql string) (string, error) {
 	tokens = translateFunctions(tokens)
 	tokens = translateNullsOrdering(tokens)
 	tokens = translateParams(tokens)
+	return tokens
+}
+
+// Translate converts PostgreSQL SQL to SQLite-compatible SQL.
+func Translate(sql string) (string, error) {
+	tokens := Tokenize(sql)
+	tokens = translateTokens(tokens)
 	return Reassemble(tokens), nil
+}
+
+// translatedStmt holds a translated SQL statement and its parameter count.
+type translatedStmt struct {
+	SQL       string
+	NumParams int
+}
+
+// TranslateMulti translates a potentially multi-statement SQL string,
+// returning each statement separately with its parameter count.
+func TranslateMulti(sql string) ([]translatedStmt, error) {
+	tokens := Tokenize(sql)
+	stmts := splitStatements(tokens)
+	result := make([]translatedStmt, 0, len(stmts))
+	for _, stmtTokens := range stmts {
+		nParams := countTokenParams(stmtTokens)
+		stmtTokens = translateTokens(stmtTokens)
+		result = append(result, translatedStmt{
+			SQL:       Reassemble(stmtTokens),
+			NumParams: nParams,
+		})
+	}
+	return result, nil
+}
+
+// splitStatements splits a token stream on semicolons into individual statements.
+// Empty statements (just whitespace/comments) are skipped.
+func splitStatements(tokens []Token) [][]Token {
+	var result [][]Token
+	var current []Token
+	for _, t := range tokens {
+		if t.Kind == TokSemicolon {
+			if stmtHasContent(current) {
+				result = append(result, current)
+			}
+			current = nil
+			continue
+		}
+		current = append(current, t)
+	}
+	if stmtHasContent(current) {
+		result = append(result, current)
+	}
+	return result
+}
+
+// stmtHasContent returns true if the tokens contain anything other than whitespace/comments.
+func stmtHasContent(tokens []Token) bool {
+	for _, t := range tokens {
+		if t.Kind != TokWhitespace && t.Kind != TokComment {
+			return true
+		}
+	}
+	return false
+}
+
+// countTokenParams counts the number of parameter tokens ($1, $2, ...) in a token stream.
+func countTokenParams(tokens []Token) int {
+	n := 0
+	for _, t := range tokens {
+		if t.Kind == TokParam {
+			n++
+		}
+	}
+	return n
 }
 
 // translateExplain rewrites EXPLAIN [ANALYZE] [VERBOSE] → EXPLAIN QUERY PLAN.

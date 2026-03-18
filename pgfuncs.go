@@ -16,7 +16,8 @@ import (
 // Must be called for each new connection.
 func registerPGFunctions(conn *sqlite3.Conn) error {
 	// gen_random_uuid() -> UUID v4 string
-	err := conn.CreateFunction("gen_random_uuid", 0, 0,
+	// INNOCUOUS allows use in DEFAULT expressions (non-deterministic but safe).
+	err := conn.CreateFunction("gen_random_uuid", 0, sqlite3.INNOCUOUS,
 		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
 			ctx.ResultText(generateUUIDv4())
 		},
@@ -149,7 +150,8 @@ func registerPGFunctions(conn *sqlite3.Conn) error {
 	}
 
 	// pg_typeof(expr) -> type name as string
-	err = conn.CreateFunction("pg_typeof", 1, 0,
+	// INNOCUOUS allows use in CHECK constraints and generated columns.
+	err = conn.CreateFunction("pg_typeof", 1, sqlite3.INNOCUOUS,
 		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
 			switch arg[0].Type() {
 			case sqlite3.NULL:

@@ -785,6 +785,99 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
+func TestSplitStatements(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  int // number of statements
+	}{
+		{"single", "SELECT 1", 1},
+		{"single with trailing semicolon", "SELECT 1;", 1},
+		{"two statements", "SELECT 1; SELECT 2", 2},
+		{"three statements", "CREATE TABLE t (id INT); INSERT INTO t VALUES (1); SELECT * FROM t", 3},
+		{"empty between semicolons", "SELECT 1;; SELECT 2", 2},
+		{"whitespace only between", "SELECT 1;   ; SELECT 2", 2},
+		{"trailing whitespace after semicolon", "SELECT 1;  ", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := Tokenize(tt.input)
+			stmts := splitStatements(tokens)
+			if len(stmts) != tt.want {
+				t.Errorf("splitStatements() returned %d statements, want %d", len(stmts), tt.want)
+			}
+		})
+	}
+}
+
+func TestTranslateMulti(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantCount int
+		wantSQL   []string // expected translated SQL for each statement
+	}{
+		{
+			name:      "single statement passthrough",
+			input:     "SELECT 1",
+			wantCount: 1,
+			wantSQL:   []string{"SELECT 1"},
+		},
+		{
+			name:      "two DDL statements",
+			input:     "CREATE TABLE a (id SERIAL PRIMARY KEY); CREATE TABLE b (id UUID)",
+			wantCount: 2,
+			wantSQL: []string{
+				"CREATE TABLE a (id INTEGER PRIMARY KEY AUTOINCREMENT)",
+				" CREATE TABLE b (id TEXT)",
+			},
+		},
+		{
+			name:      "DDL with params in second statement",
+			input:     "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO t VALUES ($1, $2)",
+			wantCount: 2,
+			wantSQL: []string{
+				"CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)",
+				" INSERT INTO t VALUES (?, ?)",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stmts, err := TranslateMulti(tt.input)
+			if err != nil {
+				t.Fatalf("TranslateMulti() error: %v", err)
+			}
+			if len(stmts) != tt.wantCount {
+				t.Fatalf("TranslateMulti() returned %d statements, want %d", len(stmts), tt.wantCount)
+			}
+			for i, want := range tt.wantSQL {
+				if stmts[i].SQL != want {
+					t.Errorf("statement %d:\n  got:  %q\n  want: %q", i, stmts[i].SQL, want)
+				}
+			}
+		})
+	}
+}
+
+func TestTranslateMultiParamCount(t *testing.T) {
+	stmts, err := TranslateMulti("INSERT INTO a VALUES ($1); INSERT INTO b VALUES ($2, $3)")
+	if err != nil {
+		t.Fatalf("TranslateMulti() error: %v", err)
+	}
+	if len(stmts) != 2 {
+		t.Fatalf("got %d statements, want 2", len(stmts))
+	}
+	if stmts[0].NumParams != 1 {
+		t.Errorf("statement 0 params = %d, want 1", stmts[0].NumParams)
+	}
+	if stmts[1].NumParams != 2 {
+		t.Errorf("statement 1 params = %d, want 2", stmts[1].NumParams)
+	}
+}
+
 func TestParseDSN(t *testing.T) {
 	tests := []struct {
 		input string
