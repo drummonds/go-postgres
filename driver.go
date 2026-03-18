@@ -137,7 +137,7 @@ func tryTempFile() (string, bool) {
 		os.Remove(name)
 		return "", false
 	}
-	s.Exec(nil) //nolint:staticcheck
+	s.Exec(nil) //nolint:staticcheck,errcheck
 	s.Close()
 	c1.Close()
 
@@ -159,7 +159,7 @@ func tryTempFile() (string, bool) {
 	// Clean up probe table.
 	s3, _ := c2.Prepare("DROP TABLE _pglike_probe")
 	if s3 != nil {
-		s3.Exec(nil) //nolint:staticcheck
+		s3.Exec(nil) //nolint:staticcheck,errcheck
 		s3.Close()
 	}
 	c2.Close()
