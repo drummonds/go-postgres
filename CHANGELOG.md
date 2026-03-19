@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-19
+
+ - moving from wazero to wasm2go
+
 ## [0.4.3] - 2026-03-18
 
  - making splits safe
