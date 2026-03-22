@@ -61,7 +61,7 @@ go-postgres driver (this project)
     |  2. Register PG-compatible functions
     |  3. Delegate to SQLite engine
     v
-ncruces/go-sqlite3 (SQLite via WASM/wazero)
+ncruces/go-sqlite3 (SQLite via wasm2go — no CGo)
     |
     v
 SQLite database file
@@ -153,7 +153,7 @@ These functions are registered as SQLite custom functions and can be called dire
 
 ## WASM Support
 
-The driver works under `GOOS=wasip1 GOARCH=wasm`. The underlying SQLite engine (`ncruces/go-sqlite3`) runs SQLite itself as WASM via wazero, so there is no CGo dependency.
+The driver works under `GOOS=wasip1 GOARCH=wasm`. The underlying SQLite engine (`ncruces/go-sqlite3`) embeds SQLite compiled to Go via wasm2go, so there is no CGo or runtime WASM interpreter dependency.
 
 ### `:memory:` connection pooling
 
@@ -186,6 +186,8 @@ go-postgres/
   translate_sequence.go     CREATE/DROP SEQUENCE emulation
   pgfuncs.go                PG-compat functions registered in SQLite
   pgerror.go                PG SQLSTATE error code wrapping
+  foreign_key_test.go       Foreign key constraint tests
+  soak_test.go              Soak / stress tests
   driver_test.go            Integration tests (full SQL round-trips)
   translate_test.go         Unit tests for all translations
   wasm_test.go              WASM cross-compilation tests
