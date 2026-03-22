@@ -1,5 +1,7 @@
 version: "3"
 
+dotenv: ['~/.config/go-postgres.env', '.env']
+
 tasks:
   fmt:
     desc: Format Go code
@@ -49,6 +51,16 @@ tasks:
     cmds:
       - go clean ./...
       - rm -rf docs/
+
+  soak:local:
+    desc: Run soak test locally (set SOAK_DURATION, e.g. task soak:local SOAK_DURATION=5m)
+    cmds:
+      - SOAK_DURATION={{.SOAK_DURATION | default "1m"}} SOAK_WORKERS={{.SOAK_WORKERS | default "4"}} SOAK_OUTPUT={{.SOAK_OUTPUT | default ""}} go test -run TestSoak -timeout 0 -count=1 -v
+
+  soak:cloud:
+    desc: Run soak test on Hetzner cloud VM
+    cmds:
+      - ./scripts/soak-cloud.sh
 
   docs:build:
     desc: Build documentation
