@@ -6,7 +6,7 @@ func BenchmarkTranslate_SimpleSelect(b *testing.B) {
 	sql := "SELECT id, name, balance FROM accounts WHERE name ILIKE $1 AND active IS TRUE ORDER BY created_at DESC LIMIT 100"
 	b.ReportAllocs()
 	for b.Loop() {
-		Translate(sql)
+		_, _ = Translate(sql)
 	}
 }
 
@@ -23,7 +23,7 @@ func BenchmarkTranslate_ComplexDDL(b *testing.B) {
 	)`
 	b.ReportAllocs()
 	for b.Loop() {
-		Translate(sql)
+		_, _ = Translate(sql)
 	}
 }
 
@@ -31,7 +31,7 @@ func BenchmarkTranslate_InsertReturning(b *testing.B) {
 	sql := "INSERT INTO accounts (name, email, balance) VALUES ($1, $2, $3) RETURNING id, created_at"
 	b.ReportAllocs()
 	for b.Loop() {
-		Translate(sql)
+		_, _ = Translate(sql)
 	}
 }
 
@@ -56,10 +56,10 @@ func BenchmarkTranslateTokens(b *testing.B) {
 func BenchmarkTranslateCached_SimpleSelect(b *testing.B) {
 	sql := "SELECT id, name, balance FROM accounts WHERE name ILIKE $1 AND active IS TRUE ORDER BY created_at DESC LIMIT 100"
 	// Prime cache
-	TranslateCached(sql)
+	_, _ = TranslateCached(sql)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		TranslateCached(sql)
+		_, _ = TranslateCached(sql)
 	}
 }
