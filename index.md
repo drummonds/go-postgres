@@ -14,7 +14,7 @@ package main
 import (
     "database/sql"
     "fmt"
-    _ "github.com/drummonds/go-postgres"
+    _ "codeberg.org/hum3/go-postgres"
 )
 
 func main() {
@@ -46,10 +46,10 @@ func main() {
 ## Installation
 
 ```bash
-go get github.com/drummonds/go-postgres
+go get codeberg.org/hum3/go-postgres
 ```
 
 ## Links
 
 - [Source (Codeberg)](https://codeberg.org/hum3/go-postgres)
-- [Mirror (GitHub)](https://github.com/drummonds/go-postgres)
+- [Mirror (GitHub)](https://codeberg.org/hum3/go-postgres)

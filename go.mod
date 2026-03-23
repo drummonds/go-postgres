@@ -1,4 +1,4 @@
-module github.com/drummonds/go-postgres
+module codeberg.org/hum3/go-postgres
 
 go 1.26.0
 

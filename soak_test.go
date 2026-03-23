@@ -110,9 +110,7 @@ func TestSoak(t *testing.T) {
 
 	// Metrics collector
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ticker := time.NewTicker(cfg.MetricInterval)
 		defer ticker.Stop()
 		var lastOps int64
@@ -126,7 +124,7 @@ func TestSoak(t *testing.T) {
 				lastOps = emitMetrics(out, start, &totalOps, &totalErrors, &totalLatencyNs, lastOps)
 			}
 		}
-	}()
+	})
 
 	// Workers
 	for i := 0; i < cfg.Workers; i++ {
@@ -290,7 +288,7 @@ func soakTransaction(ctx context.Context, db *sql.DB, rng *rand.Rand) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is expected to fail
 
 	name := fmt.Sprintf("txuser_%d", rng.Intn(100000))
 	res, err := tx.ExecContext(ctx,
@@ -340,6 +338,6 @@ func emitMetrics(enc *json.Encoder, start time.Time, ops, errs, latNs *atomic.In
 		snap.OpsPerSec = float64(curOps) / elapsed
 	}
 
-	enc.Encode(snap)
+	_ = enc.Encode(snap)
 	return curOps
 }

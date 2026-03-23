@@ -10,7 +10,7 @@ A pure Go `database/sql` driver registered as `"pglike"` that accepts PostgreSQL
 translates it to SQLite-compatible SQL at runtime, and executes against `ncruces/go-sqlite3`
 (SQLite compiled to WASM, run via wazero — no CGo). ~5300 lines of Go.
 
-Module: `github.com/drummonds/go-postgres`
+Module: `codeberg.org/hum3/go-postgres`
 
 ## Architecture Overview
 

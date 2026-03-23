@@ -7,7 +7,7 @@ The driver registers as `"pglike"` to avoid conflicts with existing PG drivers (
 ## Installation
 
 ```bash
-go get github.com/drummonds/go-postgres
+go get codeberg.org/hum3/go-postgres
 ```
 
 ## Quick Start
@@ -18,7 +18,7 @@ package main
 import (
     "database/sql"
     "fmt"
-    _ "github.com/drummonds/go-postgres"
+    _ "codeberg.org/hum3/go-postgres"
 )
 
 func main() {
@@ -200,7 +200,7 @@ go-postgres/
 |---|---|
 | Documentation | https://h3-go-postgres.statichost.page/ |
 | Source (Codeberg) | https://codeberg.org/hum3/go-postgres |
-| Mirror (GitHub) | https://github.com/drummonds/go-postgres |
+| Mirror (GitHub) | https://codeberg.org/hum3/go-postgres |
 
 ## License
 

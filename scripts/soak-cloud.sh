@@ -77,7 +77,7 @@ ${SSH} bash <<'REMOTE_INSTALL'
 set -euo pipefail
 apt-get update -qq
 apt-get install -y -qq wget >/dev/null 2>&1
-GO_VERSION="1.24.4"
+GO_VERSION="1.26.0"
 ARCH=$(dpkg --print-architecture)
 case "${ARCH}" in
   amd64) GO_ARCH="amd64" ;;
