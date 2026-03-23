@@ -62,7 +62,51 @@ tasks:
     cmds:
       - SOAK_DURATION={{.SOAK_DURATION | default "30m"}} SOAK_WORKERS={{.SOAK_WORKERS | default "4"}} ./scripts/soak-cloud.sh
 
+  bench:
+    desc: Run translation benchmarks
+    cmds:
+      - go test -bench=. -benchmem -run='^$' -count=1 ./...
+
+  test:soak:
+    desc: Run native soak test (5 min default)
+    cmds:
+      - go test -count=1 -run TestSoakNative -v -timeout 10m ./...
+
+  test:soak:long:
+    desc: Run long soak test (1 hour)
+    env:
+      SOAK_DURATION: 1h
+    cmds:
+      - go test -count=1 -run TestSoakNative -v -timeout 2h ./...
+
+  soak:wasm:build:
+    desc: Build WASM soak test binary
+    cmds:
+      - GOOS=js GOARCH=wasm go build -o cmd/soakwasm/soak.wasm ./cmd/soakwasm/
+
+  soak:wasm:
+    desc: Build and serve WASM soak test
+    deps: [soak:wasm:build]
+    cmds:
+      - go run ./cmd/soakserve
+
+  container:build:
+    desc: Build soak test container
+    cmds:
+      - podman build -t go-postgres-soak -f Containerfile .
+
+  container:run:
+    desc: Run soak test in container (512MB, 1h)
+    cmds:
+      - podman run --rm --memory=512m -e SOAK_DURATION=1h go-postgres-soak
+
+  container:run:oom:
+    desc: Run soak test in container with tight memory (128MB, 30m)
+    cmds:
+      - podman run --rm --memory=128m -e SOAK_DURATION=30m go-postgres-soak
+
   docs:build:
     desc: Build documentation
     cmds:
       - task-plus md2html --file index.md --dst docs
+      - task-plus md2html --file research-soak-testing.md --dst docs

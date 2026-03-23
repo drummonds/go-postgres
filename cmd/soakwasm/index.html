@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>go-postgres Soak Test</title>
+<style>
+  body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; margin: 2em; }
+  h1 { color: #8ab4f8; }
+  button { font-family: monospace; padding: 0.5em 1.2em; margin: 0.3em; cursor: pointer;
+           background: #16213e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 3px; }
+  button:hover { background: #0f3460; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  table { border-collapse: collapse; margin-top: 1em; }
+  td, th { padding: 0.3em 1.2em; text-align: left; border-bottom: 1px solid #333; }
+  th { color: #e94560; }
+  .val { color: #8ab4f8; font-weight: bold; }
+  .peak { color: #e94560; }
+  .controls { margin: 1em 0; }
+  .controls label { margin-right: 1.5em; }
+  .controls input { font-family: monospace; width: 6em; background: #0a0a1a; color: #e0e0e0;
+                    border: 1px solid #333; padding: 0.3em; }
+  #log { margin-top: 1em; max-height: 250px; overflow-y: auto; background: #0a0a1a;
+         padding: 0.8em; border: 1px solid #333; white-space: pre-wrap; font-size: 0.85em; }
+  .error { color: #e94560; }
+  .warn { color: #f0a030; }
+</style>
+</head>
+<body>
+<h1>go-postgres Soak Test</h1>
+<p>
+  Memory stress test for go-postgres running in-browser WASM.
+  <b>Discovery</b> grows without bound until OOM.
+  <b>Sustained</b> prunes old data to stay under a threshold.
+  <a href="https://h3-go-postgres.statichost.eu/research-soak-testing.html" style="color:#8ab4f8;">Documentation</a>
+  | <a href="https://codeberg.org/hum3/go-postgres" style="color:#8ab4f8;">Source</a>
+</p>
+
+<div class="controls">
+  <button id="btnSetup" disabled onclick="setup()">Setup</button>
+  <button id="btnDiscovery" disabled onclick="startDiscovery()">Discovery (no delete)</button>
+  <button id="btnSustained" disabled onclick="startSustained()">Sustained (with delete)</button>
+  <button id="btnStop" disabled onclick="stop()">Stop</button>
+</div>
+<div class="controls">
+  <label>Batch size: <input id="batchSize" type="number" value="10"></label>
+  <label>Delete threshold: <input id="threshold" type="number" value="5000"></label>
+  <label>Step interval (ms): <input id="interval" type="number" value="50"></label>
+</div>
+
+<table>
+  <tr><th>Metric</th><th>Current</th><th>Peak</th></tr>
+  <tr><td>Status</td><td class="val" id="status" colspan="2">Loading WASM...</td></tr>
+  <tr><td>Iteration</td><td class="val" id="iteration">-</td><td></td></tr>
+  <tr><td>Accounts</td><td class="val" id="accounts">-</td><td></td></tr>
+  <tr><td>Transactions</td><td class="val" id="txns">-</td><td></td></tr>
+  <tr><td>Ops/sec</td><td class="val" id="opsPerSec">-</td><td></td></tr>
+  <tr><td>Elapsed</td><td class="val" id="elapsed">-</td><td></td></tr>
+  <tr><td>Alloc (heap live)</td><td class="val" id="alloc">-</td><td class="peak" id="allocPeak">-</td></tr>
+  <tr><td>Sys (OS reserved)</td><td class="val" id="sys">-</td><td class="peak" id="sysPeak">-</td></tr>
+  <tr><td>TotalAlloc (cumulative)</td><td class="val" id="totalAlloc">-</td><td></td></tr>
+  <tr><td>HeapObjects</td><td class="val" id="heapObjects">-</td><td class="peak" id="heapObjectsPeak">-</td></tr>
+  <tr><td>NumGC</td><td class="val" id="numGC">-</td><td></td></tr>
+  <tr><td>Goroutines</td><td class="val" id="goroutines">-</td><td></td></tr>
+</table>
+
+<div id="log"></div>
+
+<script src="wasm_exec.js"></script>
+<script>
+const go = new Go();
+let wasmReady = false;
+let stepTimer = null;
+
+// Peak tracking
+let peakAlloc = 0;
+let peakSys = 0;
+let peakHeapObjects = 0;
+
+function fmt(b) {
+  if (b >= 1073741824) return (b / 1073741824).toFixed(2) + " GB";
+  if (b >= 1048576) return (b / 1048576).toFixed(2) + " MB";
+  if (b >= 1024) return (b / 1024).toFixed(2) + " KB";
+  return b + " B";
+}
+
+function el(id) { return document.getElementById(id); }
+
+function log(msg, cls) {
+  const d = el("log");
+  const ts = new Date().toISOString().slice(11, 19);
+  if (cls) {
+    d.innerHTML += '<span class="' + cls + '">' + ts + " " + msg + "\n</span>";
+  } else {
+    d.textContent += ts + " " + msg + "\n";
+  }
+  d.scrollTop = d.scrollHeight;
+}
+
+// --- WASM loading ---
+
+async function loadWasm() {
+  try {
+    const resp = await fetch("soak.wasm");
+    if (!resp.ok) {
+      log("Failed to fetch soak.wasm: " + resp.status + ". Run: task soak:wasm", "error");
+      el("status").textContent = "soak.wasm not found";
+      return;
+    }
+    log("Fetched soak.wasm (" + fmt(+resp.headers.get("Content-Length")) + "), compiling...");
+    let result;
+    if (resp.headers.get("Content-Type")?.includes("application/wasm")) {
+      result = await WebAssembly.instantiateStreaming(resp, go.importObject);
+    } else {
+      const bytes = await resp.arrayBuffer();
+      result = await WebAssembly.instantiate(bytes, go.importObject);
+    }
+    go.run(result.instance);
+    wasmReady = true;
+    log("WASM ready.");
+    el("status").textContent = "Ready - click Setup";
+    el("btnSetup").disabled = false;
+  } catch (e) {
+    log("WASM load error: " + e.message, "error");
+    el("status").textContent = "Load failed";
+  }
+}
+
+// --- Actions ---
+
+function setup() {
+  if (!wasmReady) return;
+  const r = JSON.parse(goSoakSetup());
+  if (r.error) { log("Setup error: " + r.error, "error"); return; }
+  log("Database and tables created.");
+  el("status").textContent = "Ready";
+  el("btnDiscovery").disabled = false;
+  el("btnSustained").disabled = false;
+  peakAlloc = 0; peakSys = 0; peakHeapObjects = 0;
+}
+
+function startDiscovery() {
+  log("Discovery mode: no deletion, growing until OOM.");
+  el("status").textContent = "Discovery (running)";
+  setButtons(true);
+  runLoop();
+}
+
+function startSustained() {
+  const threshold = parseInt(el("threshold").value) || 5000;
+  const r = JSON.parse(goSoakSetDeleteThreshold(threshold));
+  if (r.error) { log("Threshold error: " + r.error, "error"); return; }
+  log("Sustained mode: delete threshold=" + threshold);
+  el("status").textContent = "Sustained (running)";
+  setButtons(true);
+  runLoop();
+}
+
+function stop() {
+  if (stepTimer) { clearInterval(stepTimer); stepTimer = null; }
+  el("status").textContent = "Stopped";
+  setButtons(false);
+  log("Stopped. Peak alloc=" + fmt(peakAlloc) + " peak sys=" + fmt(peakSys));
+}
+
+function setButtons(running) {
+  el("btnSetup").disabled = running;
+  el("btnDiscovery").disabled = running;
+  el("btnSustained").disabled = running;
+  el("btnStop").disabled = !running;
+  el("interval").disabled = running;
+}
+
+// --- Polling loop (lofigui style: JS drives, Go is synchronous) ---
+
+function runLoop() {
+  const ms = parseInt(el("interval").value) || 50;
+  stepTimer = setInterval(doStep, ms);
+}
+
+function doStep() {
+  try {
+    const raw = goSoakStep();
+    const r = JSON.parse(raw);
+    if (r.error) {
+      log("Step error: " + r.error, "error");
+      stop();
+      return;
+    }
+    updateStats(r);
+  } catch (e) {
+    // Likely OOM — capture what we can
+    log("Crashed: " + e.message, "error");
+    log("Last peak alloc=" + fmt(peakAlloc) + " sys=" + fmt(peakSys), "warn");
+    stop();
+    el("status").textContent = "Crashed (OOM?)";
+  }
+}
+
+function updateStats(r) {
+  // Current values
+  el("iteration").textContent = r.iteration;
+  el("accounts").textContent = r.accountCount.toLocaleString();
+  el("txns").textContent = r.txCount.toLocaleString();
+  el("opsPerSec").textContent = r.opsPerSec.toFixed(1);
+  el("elapsed").textContent = r.elapsedSec.toFixed(1) + "s";
+  el("alloc").textContent = fmt(r.alloc);
+  el("sys").textContent = fmt(r.sys || 0);
+  el("totalAlloc").textContent = fmt(r.totalAlloc);
+  el("heapObjects").textContent = r.heapObjects.toLocaleString();
+  el("numGC").textContent = r.numGC;
+  el("goroutines").textContent = r.goroutines;
+
+  // Peak tracking
+  if (r.alloc > peakAlloc) { peakAlloc = r.alloc; el("allocPeak").textContent = fmt(peakAlloc); }
+  if ((r.sys || 0) > peakSys) { peakSys = r.sys; el("sysPeak").textContent = fmt(peakSys); }
+  if (r.heapObjects > peakHeapObjects) { peakHeapObjects = r.heapObjects; el("heapObjectsPeak").textContent = peakHeapObjects.toLocaleString(); }
+}
+
+loadWasm();
+</script>
+</body>
+</html>

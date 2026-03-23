@@ -353,10 +353,12 @@ This means:
 `postgres://localhost/` (no dbname) falls through to `database.db`. Not a bug per se
 but could surprise users.
 
-### 4. No Query Caching
+### 4. Query Caching Now Available
 
-Full tokenization + multi-pass translation runs on every `Prepare()` call. Fine for
-embedded/testing use, not suitable for high-throughput OLTP.
+`TranslateCached()` in `translate_cache.go` wraps `Translate()` with a FIFO cache
+(default 1000 entries). Benchmarks show ~1,600x speedup with zero allocations on hit.
+Not yet wired into the driver by default. See
+[Soak Testing and Performance Research](research-soak-testing.md) for full results.
 
 ### 5. generate_series Limitations
 
@@ -390,21 +392,29 @@ malformed SQL inputs, concurrent sequence access.
 
 ## File Map
 
-| File | Lines | Purpose |
-|---|---|---|
-| translate.go | 478 | Tokenizer + pipeline orchestration |
-| translate_ddl.go | 425 | Type mapping, SERIAL, DEFAULT functions |
-| translate_expr.go | 491 | Casts, regex, booleans, ILIKE, escape strings |
-| translate_func.go | 512 | Date/time/string function translation |
-| translate_genseries.go | 136 | generate_series → recursive CTE |
-| translate_interval.go | 96 | INTERVAL arithmetic |
-| translate_sequence.go | 151 | CREATE/DROP SEQUENCE |
-| translate_order.go | 155 | NULLS FIRST/LAST |
-| driver.go | 495 | Driver, connector, DSN, connection pooling, sequences |
-| driver_go18.go | 172 | Context-aware methods |
-| pgfuncs.go | 265 | Custom SQLite function registration |
-| pgerror.go | 64 | PG SQLSTATE error wrapping |
-| driver_test.go | 990 | Integration tests |
-| translate_test.go | 810 | Translation unit tests |
-| wasm_test.go | 74 | WASM cross-compilation tests |
-| example/main.go | 73 | Usage example |
+| File | Purpose |
+|---|---|
+| translate.go | Tokenizer + pipeline orchestration |
+| translate_ddl.go | Type mapping, SERIAL, DEFAULT functions |
+| translate_expr.go | Casts, regex, booleans, ILIKE, escape strings |
+| translate_func.go | Date/time/string function translation |
+| translate_genseries.go | generate_series → recursive CTE |
+| translate_interval.go | INTERVAL arithmetic |
+| translate_sequence.go | CREATE/DROP SEQUENCE |
+| translate_order.go | NULLS FIRST/LAST |
+| translate_cache.go | Query translation cache (FIFO, 1000 entries) |
+| translate_bench_test.go | Translation pipeline benchmarks |
+| driver.go | Driver, connector, DSN, connection pooling, sequences |
+| driver_go18.go | Context-aware methods |
+| pgfuncs.go | Custom SQLite function registration |
+| pgerror.go | PG SQLSTATE error wrapping |
+| soak_test.go | Native soak test (TestSoakNative) |
+| memcheck/ | Memory monitoring package |
+| soakwork/ | Soak workload engine |
+| cmd/soakwasm/ | Browser WASM soak test |
+| cmd/soakserve/ | HTTP server for WASM soak test |
+| Containerfile | Container image for soak testing |
+| driver_test.go | Integration tests |
+| translate_test.go | Translation unit tests |
+| wasm_test.go | WASM cross-compilation tests |
+| example/main.go | Usage example |

@@ -5,3 +5,7 @@
 docs/
 soak-results/
 .env
+
+# WASM build artifacts
+cmd/soakwasm/soak.wasm
+cmd/soakwasm/wasm_exec.js

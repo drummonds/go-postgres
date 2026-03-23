@@ -49,6 +49,10 @@ func main() {
 go get codeberg.org/hum3/go-postgres
 ```
 
+## Research
+
+- [Soak Testing and Performance](research-soak-testing.html) — Memory behaviour, translation benchmarks, query cache results
+
 ## Links
 
 - [Source (Codeberg)](https://codeberg.org/hum3/go-postgres)
