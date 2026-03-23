@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/drummonds/go-postgres/memcheck"
 	_ "github.com/drummonds/go-postgres" // register pglike driver
+	"github.com/drummonds/go-postgres/memcheck"
 )
 
 func TestWorkloadSmoke(t *testing.T) {

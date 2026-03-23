@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"syscall/js"
 
+	_ "github.com/drummonds/go-postgres"
 	"github.com/drummonds/go-postgres/memcheck"
 	"github.com/drummonds/go-postgres/soakwork"
-	_ "github.com/drummonds/go-postgres"
 )
 
 var (
