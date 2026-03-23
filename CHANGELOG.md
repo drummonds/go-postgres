@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-23
+
+ - fixing soak:cloud and mod path
+
 ## [0.5.0] - 2026-03-19
 
  - moving from wazero to wasm2go
