@@ -48,7 +48,7 @@ echo "==> Server IP: ${SERVER_IP}"
 # Wait for SSH
 echo "==> Waiting for SSH..."
 for i in $(seq 1 30); do
-  if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@"${SERVER_IP}" true 2>/dev/null; then
+  if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@"${SERVER_IP}" true 2>/dev/null; then
     break
   fi
   if [ "$i" -eq 30 ]; then
@@ -59,8 +59,9 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-SSH="ssh -o StrictHostKeyChecking=no root@${SERVER_IP}"
-SCP="scp -o StrictHostKeyChecking=no"
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+SSH="ssh ${SSH_OPTS} root@${SERVER_IP}"
+SCP="scp ${SSH_OPTS}"
 
 cleanup() {
   if [ "${SOAK_KEEP_SERVER:-0}" = "1" ]; then
@@ -93,7 +94,7 @@ REMOTE_INSTALL
 
 echo "==> Syncing project to remote..."
 rsync -az --exclude='.git' --exclude='soak-results' \
-  -e "ssh -o StrictHostKeyChecking=no" \
+  -e "ssh ${SSH_OPTS}" \
   "${PROJECT_DIR}/" root@"${SERVER_IP}":/root/go-postgres/
 
 echo "==> Running soak test (duration=${DURATION}, workers=${WORKERS})..."

@@ -60,7 +60,7 @@ tasks:
   soak:cloud:
     desc: Run soak test on Hetzner cloud VM
     cmds:
-      - ./scripts/soak-cloud.sh
+      - SOAK_DURATION={{.SOAK_DURATION | default "30m"}} SOAK_WORKERS={{.SOAK_WORKERS | default "4"}} ./scripts/soak-cloud.sh
 
   docs:build:
     desc: Build documentation
