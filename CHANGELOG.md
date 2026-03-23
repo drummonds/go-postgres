@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-23
+
+ - Working on bench testing
+
 ## [0.5.1] - 2026-03-23
 
  - fixing soak:cloud and mod path
