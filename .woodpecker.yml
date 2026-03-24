@@ -2,8 +2,8 @@ steps:
   - name: soak-test
     image: golang:1.26
     environment:
-      SOAK_DURATION: 2m
+      SOAK_DURATION: 1h
       SOAK_WORKERS: 4
-      SOAK_METRIC_INTERVAL: 10s
+      SOAK_METRIC_INTERVAL: 30s
     commands:
-      - go test -run TestSoak -timeout 5m -count=1 -v
+      - go test -run TestSoak -timeout 2h -count=1 -v
