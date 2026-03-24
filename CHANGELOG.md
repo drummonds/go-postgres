@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-24
+
+ - Fix soak metrics and add chart generation
+
 ## [0.5.2] - 2026-03-23
 
  - Working on bench testing
