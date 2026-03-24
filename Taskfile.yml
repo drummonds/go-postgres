@@ -70,14 +70,14 @@ tasks:
   test:soak:
     desc: Run native soak test (5 min default)
     cmds:
-      - go test -count=1 -run TestSoakNative -v -timeout 10m ./...
+      - SOAK_DURATION={{.SOAK_DURATION | default "5m"}} go test -count=1 -run TestSoak -v -timeout 10m ./...
 
   test:soak:long:
     desc: Run long soak test (1 hour)
     env:
       SOAK_DURATION: 1h
     cmds:
-      - go test -count=1 -run TestSoakNative -v -timeout 2h ./...
+      - go test -count=1 -run TestSoak -v -timeout 2h ./...
 
   soak:wasm:build:
     desc: Build WASM soak test binary
