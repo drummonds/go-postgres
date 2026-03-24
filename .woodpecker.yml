@@ -5,5 +5,11 @@ steps:
       SOAK_DURATION: 1h
       SOAK_WORKERS: 4
       SOAK_METRIC_INTERVAL: 30s
+      SOAK_OUTPUT: /tmp/soak.jsonl
     commands:
       - go test -run TestSoak -timeout 2h -count=1 -v
+      - go run ./cmd/soak-plot < /tmp/soak.jsonl > soak-chart.svg
+      - echo "=== SOAK CHART GENERATED ==="
+      - cat /tmp/soak.jsonl | head -5
+      - echo "..."
+      - tail -5 /tmp/soak.jsonl

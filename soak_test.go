@@ -25,6 +25,7 @@ type SoakMetrics struct {
 	TotalOps     int64     `json:"total_ops"`
 	TotalErrors  int64     `json:"total_errors"`
 	OpsPerSec    float64   `json:"ops_per_sec"`
+	CumOpsPerSec float64   `json:"cum_ops_per_sec"`
 	AvgLatencyUs float64   `json:"avg_latency_us"`
 }
 
@@ -113,15 +114,15 @@ func TestSoak(t *testing.T) {
 	wg.Go(func() {
 		ticker := time.NewTicker(cfg.MetricInterval)
 		defer ticker.Stop()
-		var lastOps int64
+		state := &metricsState{prevTime: start}
 		for {
 			select {
 			case <-ctx.Done():
 				// Final snapshot
-				emitMetrics(out, start, &totalOps, &totalErrors, &totalLatencyNs, lastOps)
+				emitMetrics(out, start, &totalOps, &totalErrors, &totalLatencyNs, state)
 				return
 			case <-ticker.C:
-				lastOps = emitMetrics(out, start, &totalOps, &totalErrors, &totalLatencyNs, lastOps)
+				emitMetrics(out, start, &totalOps, &totalErrors, &totalLatencyNs, state)
 			}
 		}
 	})
@@ -309,19 +310,37 @@ func soakTransaction(ctx context.Context, db *sql.DB, rng *rand.Rand) error {
 	return tx.Commit()
 }
 
-func emitMetrics(enc *json.Encoder, start time.Time, ops, errs, latNs *atomic.Int64, prevOps int64) int64 {
+type metricsState struct {
+	prevOps  int64
+	prevTime time.Time
+}
+
+func emitMetrics(enc *json.Encoder, start time.Time, ops, errs, latNs *atomic.Int64, state *metricsState) {
+	now := time.Now()
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
 	curOps := ops.Load()
-	elapsed := time.Since(start).Seconds()
+	elapsed := now.Sub(start).Seconds()
+	intervalSecs := now.Sub(state.prevTime).Seconds()
+	deltaOps := curOps - state.prevOps
+
 	avgLat := float64(0)
 	if curOps > 0 {
 		avgLat = float64(latNs.Load()) / float64(curOps) / 1000 // microseconds
 	}
 
+	var intervalRate float64
+	if intervalSecs > 0 {
+		intervalRate = float64(deltaOps) / intervalSecs
+	}
+	var cumRate float64
+	if elapsed > 0 {
+		cumRate = float64(curOps) / elapsed
+	}
+
 	snap := SoakMetrics{
-		Timestamp:    time.Now().UTC(),
+		Timestamp:    now.UTC(),
 		ElapsedSecs:  elapsed,
 		HeapAllocMB:  float64(m.HeapAlloc) / 1024 / 1024,
 		HeapSysMB:    float64(m.HeapSys) / 1024 / 1024,
@@ -329,15 +348,12 @@ func emitMetrics(enc *json.Encoder, start time.Time, ops, errs, latNs *atomic.In
 		Goroutines:   runtime.NumGoroutine(),
 		TotalOps:     curOps,
 		TotalErrors:  errs.Load(),
-		OpsPerSec:    float64(curOps-prevOps) / elapsed * (elapsed / (elapsed + 0.001)), // approximate interval rate
+		OpsPerSec:    intervalRate,
+		CumOpsPerSec: cumRate,
 		AvgLatencyUs: avgLat,
 	}
 
-	// Fix OpsPerSec to be interval-based
-	if elapsed > 0 {
-		snap.OpsPerSec = float64(curOps) / elapsed
-	}
-
 	_ = enc.Encode(snap)
-	return curOps
+	state.prevOps = curOps
+	state.prevTime = now
 }
