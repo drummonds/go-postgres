@@ -21,14 +21,14 @@ type metric struct {
 }
 
 const (
-	width      = 900
-	height     = 400
-	padLeft    = 70
-	padRight   = 20
-	padTop     = 40
-	padBottom  = 50
-	plotW      = width - padLeft - padRight
-	plotH      = height - padTop - padBottom
+	width     = 900
+	height    = 400
+	padLeft   = 70
+	padRight  = 20
+	padTop    = 40
+	padBottom = 50
+	plotW     = width - padLeft - padRight
+	plotH     = height - padTop - padBottom
 )
 
 func main() {
