@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- PG-compatible catalog views installed on every connection: `information_schema.tables`, `information_schema.columns`, `information_schema.table_constraints`, `information_schema.key_column_usage`, `information_schema.referential_constraints`, `information_schema.constraint_column_usage`, and `pg_indexes`. Plus a pglike-only helper view `pg_index_columns` exposing index columns without a `pg_index`/`pg_class`/`pg_attribute` join.
+- `current_schema()` returns `'public'` and `current_database()` returns `'main'` so PG-style catalog filters work unchanged.
+- Translator rewrites `information_schema.X`, `pg_catalog.X`, bare `pg_indexes`, and bare `pg_index_columns` to mangled view names (`_pglike_<schema>_<view>`) so the same SQL runs on pglike and real Postgres.
+
 ## [0.5.3] - 2026-03-24
 
  - Fix soak metrics and add chart generation

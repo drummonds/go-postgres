@@ -199,6 +199,12 @@ func (d *Driver) openConn(sqliteDSN string) (driver.Conn, error) {
 	// Ensure _sequences table exists for sequence emulation.
 	_ = c.execDirect("CREATE TABLE IF NOT EXISTS _sequences (name TEXT PRIMARY KEY, current_value INTEGER NOT NULL DEFAULT 0, increment INTEGER NOT NULL DEFAULT 1)")
 
+	// Install PG-compatible catalog views (information_schema.*, pg_indexes).
+	if err := installCatalogViews(c); err != nil {
+		inner.Close()
+		return nil, err
+	}
+
 	return c, nil
 }
 

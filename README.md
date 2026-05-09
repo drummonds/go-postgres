@@ -150,6 +150,41 @@ These functions are registered as SQLite custom functions and can be called dire
 | `md5(string)` | Returns the hex-encoded MD5 hash |
 | `split_part(string, delimiter, field)` | Returns the nth field (1-indexed) |
 | `pg_typeof(expr)` | Returns the SQLite type name of the expression |
+| `current_schema()` | Returns `'public'` |
+| `current_database()` | Returns `'main'` |
+
+## Catalog Views
+
+PG-style catalog queries work out of the box. On every new connection, the driver installs `TEMP VIEW`s that expose the same shape as PostgreSQL's `information_schema` and `pg_indexes`, backed by SQLite's own catalog (`sqlite_master`, `pragma_table_info`, `pragma_foreign_key_list`, `pragma_index_list`/`_info`). The translator rewrites canonical PG references to the underlying view names so the same SQL runs on pglike and real Postgres.
+
+| Catalog reference | Notes |
+|---|---|
+| `information_schema.tables` | `table_catalog`, `table_schema='public'`, `table_name`, `table_type` (`BASE TABLE` or `VIEW`) |
+| `information_schema.columns` | `column_name`, `data_type`, `is_nullable`, `ordinal_position` (1-based), `column_default` |
+| `information_schema.table_constraints` | `PRIMARY KEY`, `FOREIGN KEY`, `UNIQUE` rows; constraint names synthesised (`<table>_pkey`, `<table>_fk_<id>`) |
+| `information_schema.key_column_usage` | One row per column in a PK or FK |
+| `information_schema.referential_constraints` | FK metadata: `update_rule`, `delete_rule` |
+| `information_schema.constraint_column_usage` | Columns referenced by a constraint (parent-side for FKs) |
+| `pg_indexes` | `schemaname='public'`, `tablename`, `indexname`, `indexdef` (raw `CREATE INDEX` text) |
+| `pg_index_columns` | pglike-specific: index columns flat — `indexname`, `column_name`, `ordinal_position`, `is_unique` |
+
+Example — list tables and find the FK columns of a table:
+
+```go
+db, _ := sql.Open("pglike", ":memory:")
+db.Query(`SELECT table_name FROM information_schema.tables
+          WHERE table_schema = current_schema()`)
+
+db.Query(`SELECT kcu.column_name, ccu.table_name, ccu.column_name
+          FROM information_schema.referential_constraints rc
+          JOIN information_schema.key_column_usage kcu
+            ON rc.constraint_name = kcu.constraint_name
+          JOIN information_schema.constraint_column_usage ccu
+            ON rc.unique_constraint_name = ccu.constraint_name
+          WHERE kcu.table_name = $1`, "posts")
+```
+
+The same queries run against real Postgres without modification.
 
 ## WASM Support
 
@@ -184,6 +219,8 @@ go-postgres/
   translate_interval.go     INTERVAL literal parsing and arithmetic
   translate_order.go        NULLS FIRST/LAST ordering support
   translate_sequence.go     CREATE/DROP SEQUENCE emulation
+  translate_catalog.go      information_schema/pg_catalog reference rewriting
+  catalog.go                TEMP VIEW DDLs for information_schema and pg_indexes
   pgfuncs.go                PG-compat functions registered in SQLite
   pgerror.go                PG SQLSTATE error code wrapping
   foreign_key_test.go       Foreign key constraint tests

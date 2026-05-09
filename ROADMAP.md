@@ -15,6 +15,7 @@
 
 ## Phase 3: Advanced Features
 
+- [x] Catalog views: `information_schema.{tables,columns,table_constraints,key_column_usage,referential_constraints,constraint_column_usage}` and `pg_indexes` installed per-connection so PG-style catalog queries work unchanged
 - Schema support via `ATTACH DATABASE`
 - Array types stored as JSON
 - JSONB containment operators (`@>`, `<@`, `#>`)

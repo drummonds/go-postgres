@@ -365,6 +365,7 @@ func Reassemble(tokens []Token) string {
 // translateTokens applies all translation passes to a token stream.
 func translateTokens(tokens []Token) []Token {
 	tokens = translateExplain(tokens)
+	tokens = translateCatalog(tokens)
 	tokens = translateGenerateSeries(tokens)
 	tokens = translateSequenceDDL(tokens)
 	tokens = translateInterval(tokens)

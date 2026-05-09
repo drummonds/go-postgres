@@ -173,6 +173,27 @@ func registerPGFunctions(conn *sqlite3.Conn) error {
 		return err
 	}
 
+	// current_schema() / current_database() — constant strings used by
+	// information_schema queries. Real PG returns the active schema/db; pglike
+	// has a single SQLite database with no schema concept, so we report
+	// 'public' / 'main' to match what our catalog views emit.
+	err = conn.CreateFunction("current_schema", 0, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			ctx.ResultText("public")
+		},
+	)
+	if err != nil {
+		return err
+	}
+	err = conn.CreateFunction("current_database", 0, sqlite3.DETERMINISTIC,
+		func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+			ctx.ResultText("main")
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
