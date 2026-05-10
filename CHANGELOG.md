@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-05-10
+
+ - Adding catalog coverage for lofidb
+
 ### Added
 - PG-compatible catalog views installed on every connection: `information_schema.tables`, `information_schema.columns`, `information_schema.table_constraints`, `information_schema.key_column_usage`, `information_schema.referential_constraints`, `information_schema.constraint_column_usage`, and `pg_indexes`. Plus a pglike-only helper view `pg_index_columns` exposing index columns without a `pg_index`/`pg_class`/`pg_attribute` join.
 - `current_schema()` returns `'public'` and `current_database()` returns `'main'` so PG-style catalog filters work unchanged.
