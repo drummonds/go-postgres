@@ -4,8 +4,9 @@ import "strings"
 
 // catalogSchemaMap maps qualified PG catalog references to the mangled
 // SQLite view names installed by installCatalogViews.
-//   information_schema.<view> → _pglike_information_schema_<view>
-//   pg_catalog.<view>         → _pglike_<view>   (only ones we actually expose)
+//
+//	information_schema.<view> → _pglike_information_schema_<view>
+//	pg_catalog.<view>         → _pglike_<view>   (only ones we actually expose)
 var catalogSchemaMap = map[string]map[string]string{
 	"information_schema": {
 		"tables":                  "_pglike_information_schema_tables",
