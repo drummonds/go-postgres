@@ -130,5 +130,5 @@ cmd/soakserve/      HTTP server for WASM soak test
 
 ## Related Issues
 
-- [go-postgres#6](https://codeberg.org/hum3/go-postgres/issues/6) — Stability/soak testing infrastructure (umbrella)
-- [gobank#6](https://codeberg.org/hum3/gobank/issues/6) — Refactor memory checker to use go-postgres/memcheck
+- [go-postgres#6](https://git.bytestone.uk/hum3/go-postgres/issues/6) — Stability/soak testing infrastructure (umbrella)
+- [gobank#6](https://git.bytestone.uk/hum3/gobank/issues/6) — Refactor memory checker to use go-postgres/memcheck

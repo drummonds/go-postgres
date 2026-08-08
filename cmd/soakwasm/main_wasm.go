@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"syscall/js"
 
-	_ "codeberg.org/hum3/go-postgres"
-	"codeberg.org/hum3/go-postgres/memcheck"
-	"codeberg.org/hum3/go-postgres/soakwork"
+	_ "git.bytestone.uk/hum3/go-postgres"
+	"git.bytestone.uk/hum3/go-postgres/memcheck"
+	"git.bytestone.uk/hum3/go-postgres/soakwork"
 )
 
 var (

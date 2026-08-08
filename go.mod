@@ -1,4 +1,4 @@
-module codeberg.org/hum3/go-postgres
+module git.bytestone.uk/hum3/go-postgres
 
 go 1.26.0
 

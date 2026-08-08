@@ -7,7 +7,7 @@ The driver registers as `"pglike"` to avoid conflicts with existing PG drivers (
 ## Installation
 
 ```bash
-go get codeberg.org/hum3/go-postgres
+go get git.bytestone.uk/hum3/go-postgres
 ```
 
 ## Quick Start
@@ -18,7 +18,7 @@ package main
 import (
     "database/sql"
     "fmt"
-    _ "codeberg.org/hum3/go-postgres"
+    _ "git.bytestone.uk/hum3/go-postgres"
 )
 
 func main() {
@@ -236,8 +236,8 @@ go-postgres/
 | | |
 |---|---|
 | Documentation | https://h3-go-postgres.statichost.page/ |
-| Source (Codeberg) | https://codeberg.org/hum3/go-postgres |
-| Mirror (GitHub) | https://codeberg.org/hum3/go-postgres |
+| Source (Codeberg) | https://git.bytestone.uk/hum3/go-postgres |
+| Mirror (GitHub) | https://git.bytestone.uk/hum3/go-postgres |
 
 ## License
 

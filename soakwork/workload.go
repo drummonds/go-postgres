@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"codeberg.org/hum3/go-postgres/memcheck"
+	"git.bytestone.uk/hum3/go-postgres/memcheck"
 )
 
 // Config controls the soak workload parameters.
