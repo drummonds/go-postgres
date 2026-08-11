@@ -6,10 +6,6 @@
 
  - Docs and link cleanup after the forge migration
 
-## [0.5.6] - 2026-08-11
-
- - Docs and link cleanup after the forge migration
-
 ### Fixed
 - "Source" links relabelled Codeberg → Forgejo; "Mirror (GitHub)" links now point at https://github.com/drummonds/go-postgres instead of the old Codeberg URL.
 - Documentation links moved off retired statichost to https://go-postgres.docs.bytestone.uk/.
