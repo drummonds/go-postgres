@@ -235,9 +235,9 @@ go-postgres/
 
 | | |
 |---|---|
-| Documentation | https://h3-go-postgres.statichost.page/ |
-| Source (Codeberg) | https://git.bytestone.uk/hum3/go-postgres |
-| Mirror (GitHub) | https://git.bytestone.uk/hum3/go-postgres |
+| Documentation | https://go-postgres.docs.bytestone.uk/ |
+| Source (Forgejo) | https://git.bytestone.uk/hum3/go-postgres |
+| Mirror (GitHub) | https://github.com/drummonds/go-postgres |
 
 ## License
 

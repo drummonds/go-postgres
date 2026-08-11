@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-08-11
+
+ - Docs and link cleanup after the forge migration
+
+### Fixed
+- "Source" links relabelled Codeberg → Forgejo; "Mirror (GitHub)" links now point at https://github.com/drummonds/go-postgres instead of the old Codeberg URL.
+- Documentation links moved off retired statichost to https://go-postgres.docs.bytestone.uk/.
+
+### Changed
+- Docs deploy switched from statichost to rsync (`tp pages deploy`).
+
+## [0.5.5] - 2026-08-08
+
+ - Migrate forge references from codeberg.org to git.bytestone.uk
+
+### Changed
+- Module path and self-referencing URLs now point at the new Forgejo instance following the move off Codeberg.
+
 ## [0.5.4] - 2026-05-10
 
  - Adding catalog coverage for lofidb

@@ -1,8 +1,10 @@
 remotes:
-  - origin
-  - github
+  - name: origin
+    forge: forgejo
+  - name: github
+    forge: github
 pages_build:
   - task docs:build
 pages_deploy:
-  - type: statichost
-    site: h3-go-postgres
+  - type: rsync
+    site: go-postgres

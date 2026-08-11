@@ -55,5 +55,5 @@ go get git.bytestone.uk/hum3/go-postgres
 
 ## Links
 
-- [Source (Codeberg)](https://git.bytestone.uk/hum3/go-postgres)
-- [Mirror (GitHub)](https://git.bytestone.uk/hum3/go-postgres)
+- [Source (Forgejo)](https://git.bytestone.uk/hum3/go-postgres)
+- [Mirror (GitHub)](https://github.com/drummonds/go-postgres)
