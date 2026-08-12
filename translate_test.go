@@ -459,7 +459,7 @@ func TestTranslateGenerateSeries(t *testing.T) {
 		{
 			name:  "generate_series with alias",
 			input: "SELECT s FROM generate_series(1, 3) AS s",
-			want:  "WITH RECURSIVE _gs(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM _gs WHERE value + 1 <= 3) SELECT s FROM _gs AS s",
+			want:  "WITH RECURSIVE _gs(s) AS (SELECT 1 UNION ALL SELECT s + 1 FROM _gs WHERE s + 1 <= 3) SELECT s FROM _gs AS s",
 		},
 	}
 

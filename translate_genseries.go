@@ -61,11 +61,18 @@ func translateGenerateSeries(tokens []Token) []Token {
 			aliasEnd = endParen + len(aliasTokens)
 		}
 
-		// Build: WITH RECURSIVE _gs(value) AS (SELECT start UNION ALL SELECT value + step FROM _gs WHERE value + step <= stop)
-		cte := "WITH RECURSIVE _gs(value) AS (" +
+		// PG names the result column after the alias (SELECT s FROM
+		// generate_series(1,3) AS s), so the CTE column follows suit.
+		col := "value"
+		if len(aliasTokens) > 0 {
+			col = aliasTokens[len(aliasTokens)-1].Raw
+		}
+
+		// Build: WITH RECURSIVE _gs(col) AS (SELECT start UNION ALL SELECT col + step FROM _gs WHERE col + step <= stop)
+		cte := "WITH RECURSIVE _gs(" + col + ") AS (" +
 			"SELECT " + startStr +
-			" UNION ALL SELECT value + " + stepStr +
-			" FROM _gs WHERE value + " + stepStr + " <= " + stopStr + ") "
+			" UNION ALL SELECT " + col + " + " + stepStr +
+			" FROM _gs WHERE " + col + " + " + stepStr + " <= " + stopStr + ") "
 
 		cteTokens := Tokenize(cte)
 

@@ -22,7 +22,6 @@ SELECT * FROM generate_series(0, 10, 2)
 10
 
 -- case: series with alias
--- skip: known gap — PG treats "AS s" as naming the column; the translation only aliases the derived table, so "s" does not resolve
 -- query:
 SELECT s FROM generate_series(1, 3) AS s
 -- expect:
