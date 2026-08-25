@@ -94,25 +94,132 @@ func (c *pglikeConnector) Close() error {
 
 // sharedConn wraps a single real connection with a mutex so the pool
 // can hand out multiple "connections" that serialise on one underlying conn.
+//
+// The mutex must be held for the full life of a transaction
+// (Begin→Commit/Rollback) and of an open result set (Query→rows.Close), not
+// just per driver call: the underlying SQLite connection is not
+// goroutine-safe, and interleaving statements from other pool "connections"
+// corrupts its state (panics inside SQLite) or joins them to a foreign
+// transaction.
 type sharedConn struct {
 	real driver.Conn
 	mu   *sync.Mutex
+	held bool // mu is held long-term on behalf of this pseudo-connection
+}
+
+// acquire locks mu unless this pseudo-connection already holds it long-term
+// (an open transaction). Returns the matching release, a no-op if already
+// held. database/sql guarantees one goroutine uses a driver.Conn at a time,
+// so held is only touched by this connection's user.
+func (s *sharedConn) acquire() (release func()) {
+	if s.held {
+		return func() {}
+	}
+	s.mu.Lock()
+	return s.mu.Unlock
 }
 
 func (s *sharedConn) Prepare(query string) (driver.Stmt, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.real.Prepare(query)
+	release := s.acquire()
+	defer release()
+	st, err := s.real.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	return &sharedStmt{inner: st, conn: s}, nil
 }
 
 func (s *sharedConn) Begin() (driver.Tx, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.real.Begin() //nolint:staticcheck
+	tx, err := s.real.Begin() //nolint:staticcheck
+	if err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
+	s.held = true
+	return &sharedTx{inner: tx, conn: s}, nil
 }
 
 // Close is a no-op — the real connection is owned by the connector.
 func (s *sharedConn) Close() error { return nil }
+
+// sharedTx releases the long-term lock when the transaction ends.
+type sharedTx struct {
+	inner driver.Tx
+	conn  *sharedConn
+}
+
+func (t *sharedTx) end(err error) error {
+	t.conn.held = false
+	t.conn.mu.Unlock()
+	return err
+}
+
+func (t *sharedTx) Commit() error   { return t.end(t.inner.Commit()) }
+func (t *sharedTx) Rollback() error { return t.end(t.inner.Rollback()) }
+
+// sharedStmt serialises statement execution on the shared connection.
+type sharedStmt struct {
+	inner driver.Stmt
+	conn  *sharedConn
+}
+
+func (st *sharedStmt) Close() error {
+	release := st.conn.acquire()
+	defer release()
+	return st.inner.Close()
+}
+
+func (st *sharedStmt) NumInput() int { return st.inner.NumInput() }
+
+func (st *sharedStmt) Exec(args []driver.Value) (driver.Result, error) {
+	release := st.conn.acquire()
+	defer release()
+	return st.inner.Exec(args) //nolint:staticcheck
+}
+
+func (st *sharedStmt) Query(args []driver.Value) (driver.Rows, error) {
+	c := st.conn
+	locked := false
+	if !c.held {
+		c.mu.Lock()
+		locked = true
+	}
+	r, err := st.inner.Query(args) //nolint:staticcheck
+	if err != nil {
+		if locked {
+			c.mu.Unlock()
+		}
+		return nil, err
+	}
+	if locked {
+		// Keep the lock until the rows are closed — the cursor lives on the
+		// shared connection.
+		c.held = true
+		return &sharedRows{inner: r, release: func() { c.held = false; c.mu.Unlock() }}, nil
+	}
+	return &sharedRows{inner: r, release: func() {}}, nil
+}
+
+// sharedRows holds the shared-connection lock until closed.
+type sharedRows struct {
+	inner   driver.Rows
+	release func()
+	closed  bool
+}
+
+func (r *sharedRows) Columns() []string { return r.inner.Columns() }
+
+func (r *sharedRows) Next(dest []driver.Value) error { return r.inner.Next(dest) }
+
+func (r *sharedRows) Close() error {
+	err := r.inner.Close()
+	if !r.closed {
+		r.closed = true
+		r.release()
+	}
+	return err
+}
 
 // isMemoryDSN reports whether a SQLite DSN names an in-memory database.
 // Without special handling every pool connection to such a DSN would get its

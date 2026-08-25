@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- The single-shared-connection fallback (used in WASM, where no temp file is
+  available) now holds its lock for the whole life of a transaction and of
+  any open result set instead of per driver call. Previously concurrent pool
+  "connections" could interleave statements on the one real SQLite
+  connection, corrupting its state — panics inside SQLite ("index out of
+  range") that crashed the browser demo. The WASM path is now covered by a
+  native test driving the same code.
+
 ## [0.5.8] - 2026-08-25
 
 ### Fixed
