@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-08-25
+
 ### Fixed
 - The single-shared-connection fallback (used in WASM, where no temp file is
   available) now holds its lock for the whole life of a transaction and of
