@@ -195,8 +195,8 @@ func parseCorpusParams(arg string) []any {
 	}
 	var params []any
 	for _, cell := range splitCorpusRow(arg) {
-		switch {
-		case cell == "NULL":
+		switch cell {
+		case "NULL":
 			params = append(params, nil)
 		default:
 			if i, err := strconv.ParseInt(cell, 10, 64); err == nil {
