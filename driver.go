@@ -26,14 +26,14 @@ var _ driver.DriverContext = (*Driver)(nil)
 type Driver struct{}
 
 // OpenConnector implements driver.DriverContext.
-// For :memory: DSNs, it tries a temp file so pool connections share one database.
-// If temp file creation fails (e.g. WASM), it falls back to a single shared
-// connection protected by a mutex.
+// For in-memory DSNs, it tries a temp file so pool connections share one
+// database. If temp file creation fails (e.g. WASM), it falls back to a single
+// shared connection protected by a mutex.
 func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 	sqliteDSN := parseDSN(name)
 	c := &pglikeConnector{dsn: sqliteDSN, driver: d}
 
-	if name == ":memory:" {
+	if isMemoryDSN(sqliteDSN) {
 		if tmpDSN, ok := tryTempFile(); ok {
 			// Temp file works — all pool connections share this file.
 			c.dsn = tmpDSN
@@ -105,6 +105,27 @@ func (s *sharedConn) Begin() (driver.Tx, error) {
 
 // Close is a no-op — the real connection is owned by the connector.
 func (s *sharedConn) Close() error { return nil }
+
+// isMemoryDSN reports whether a SQLite DSN names an in-memory database.
+// Without special handling every pool connection to such a DSN would get its
+// own private empty database. Matches ":memory:", "file::memory:" (with or
+// without query parameters), and any file: DSN with mode=memory.
+func isMemoryDSN(dsn string) bool {
+	if dsn == ":memory:" {
+		return true
+	}
+	if !strings.HasPrefix(dsn, "file:") {
+		return false
+	}
+	rest := strings.TrimPrefix(dsn, "file:")
+	if q := strings.IndexByte(rest, '?'); q >= 0 {
+		if strings.Contains(rest[q+1:], "mode=memory") {
+			return true
+		}
+		rest = rest[:q]
+	}
+	return rest == ":memory:" || rest == ""
+}
 
 // tryTempFile creates a temp file and verifies two separate SQLite connections
 // can share data through it. ncruces WASM modules have isolated filesystems,

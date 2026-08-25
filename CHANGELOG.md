@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-08-25
+
+### Fixed
+- All in-memory DSN spellings (`file::memory:`, `file:...?mode=memory`, with
+  or without query parameters) now share one database across pool
+  connections, matching the existing `:memory:` behaviour. Previously each
+  pool connection to `file::memory:` got its own private empty database,
+  surfacing as "no such table" under concurrent load.
+
 ## [0.5.6] - 2026-08-11
 
  - Docs and link cleanup after the forge migration
