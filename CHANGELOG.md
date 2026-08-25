@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+- Concurrent write transactions on in-memory DSNs no longer fail with
+  "database is locked" (SQLITE_BUSY): the shared temp file is now opened
+  with `_txlock=immediate`, WAL journal mode and an explicit busy timeout.
+  Previously deferred read-then-write transactions on the default rollback
+  journal hit SQLite's deadlock-avoidance path, which returns SQLITE_BUSY
+  without consulting the busy handler.
+
 ## [0.5.7] - 2026-08-25
 
 ### Fixed

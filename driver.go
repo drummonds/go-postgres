@@ -36,7 +36,15 @@ func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 	if isMemoryDSN(sqliteDSN) {
 		if tmpDSN, ok := tryTempFile(); ok {
 			// Temp file works — all pool connections share this file.
-			c.dsn = tmpDSN
+			// WAL + immediate transactions + busy_timeout are required for
+			// concurrent pool connections: a deferred read-then-write
+			// transaction on a rollback-journal database returns SQLITE_BUSY
+			// ("database is locked") immediately, without consulting the
+			// busy handler, when another connection holds the write lock.
+			c.dsn = "file:" + tmpDSN + "?_txlock=immediate" +
+				"&_pragma=busy_timeout(10000)" +
+				"&_pragma=journal_mode(WAL)" +
+				"&_pragma=synchronous(NORMAL)"
 			c.tmpFile = tmpDSN
 		} else {
 			// No usable filesystem (WASM) — single shared connection.

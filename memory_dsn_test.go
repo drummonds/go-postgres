@@ -28,6 +28,73 @@ func TestIsMemoryDSN(t *testing.T) {
 	}
 }
 
+// TestMemoryDSNConcurrentWriteTransactions verifies concurrent read-then-write
+// transactions on an in-memory DSN don't fail with "database is locked".
+// Regression: the shared temp file was opened with default (deferred)
+// transactions on a rollback journal, where SQLite returns SQLITE_BUSY
+// immediately — bypassing the busy handler — when a deferred transaction
+// upgrades to a write lock while another connection holds one. Surfaced as
+// persistCustomer/ledger "sqlite3: database is locked" in the gobank demo's
+// native run.
+func TestMemoryDSNConcurrentWriteTransactions(t *testing.T) {
+	db, err := sql.Open("pglike", "file::memory:?_pragma=temp_store(2)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(4)
+
+	if _, err := db.Exec(`CREATE TABLE counters (id INTEGER PRIMARY KEY, n INTEGER NOT NULL)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO counters (id, n) VALUES (1, 0)`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	const workers = 8
+	const txPerWorker = 25
+	var wg sync.WaitGroup
+	errs := make(chan error, workers*txPerWorker)
+	for range workers {
+		wg.Go(func() {
+			for range txPerWorker {
+				tx, err := db.Begin()
+				if err != nil {
+					errs <- err
+					continue
+				}
+				var n int
+				if err := tx.QueryRow(`SELECT n FROM counters WHERE id = 1`).Scan(&n); err != nil {
+					errs <- err
+					_ = tx.Rollback()
+					continue
+				}
+				if _, err := tx.Exec(`UPDATE counters SET n = $1 WHERE id = 1`, n+1); err != nil {
+					errs <- err
+					_ = tx.Rollback()
+					continue
+				}
+				if err := tx.Commit(); err != nil {
+					errs <- err
+				}
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent tx: %v", err)
+	}
+
+	var n int
+	if err := db.QueryRow(`SELECT n FROM counters WHERE id = 1`).Scan(&n); err != nil {
+		t.Fatalf("final read: %v", err)
+	}
+	if n != workers*txPerWorker {
+		t.Errorf("n = %d, want %d (lost updates)", n, workers*txPerWorker)
+	}
+}
+
 // TestMemoryDSNVariantsSharedAcrossConnections verifies every in-memory DSN
 // spelling shares one database across pool connections. Regression: only the
 // literal ":memory:" was special-cased, so "file::memory:?..." gave each pool
