@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- The shared-connection fallback no longer holds its lock until query rows
+  are closed — that deadlocked ("all goroutines are asleep") whenever a
+  query ran while another query's rows were still open, a normal
+  database/sql pattern (hit by the gobank demo's DB explorer in the
+  browser). Query results are now materialised in memory and the cursor
+  closed before the lock is released; unclosed rows can no longer wedge
+  the database.
+
 ## [0.5.9] - 2026-08-25
 
 ### Fixed

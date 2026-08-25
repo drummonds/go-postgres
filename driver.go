@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -96,11 +97,12 @@ func (c *pglikeConnector) Close() error {
 // can hand out multiple "connections" that serialise on one underlying conn.
 //
 // The mutex must be held for the full life of a transaction
-// (Begin→Commit/Rollback) and of an open result set (Query→rows.Close), not
+// (Begin→Commit/Rollback) and for the whole of each statement execution, not
 // just per driver call: the underlying SQLite connection is not
 // goroutine-safe, and interleaving statements from other pool "connections"
 // corrupts its state (panics inside SQLite) or joins them to a foreign
-// transaction.
+// transaction. Query results are materialised and the cursor closed before
+// the lock is released, so no lock ever depends on the caller closing rows.
 type sharedConn struct {
 	real driver.Conn
 	mu   *sync.Mutex
@@ -179,46 +181,62 @@ func (st *sharedStmt) Exec(args []driver.Value) (driver.Result, error) {
 }
 
 func (st *sharedStmt) Query(args []driver.Value) (driver.Rows, error) {
-	c := st.conn
-	locked := false
-	if !c.held {
-		c.mu.Lock()
-		locked = true
-	}
+	release := st.conn.acquire()
+	defer release()
 	r, err := st.inner.Query(args) //nolint:staticcheck
 	if err != nil {
-		if locked {
-			c.mu.Unlock()
-		}
 		return nil, err
 	}
-	if locked {
-		// Keep the lock until the rows are closed — the cursor lives on the
-		// shared connection.
-		c.held = true
-		return &sharedRows{inner: r, release: func() { c.held = false; c.mu.Unlock() }}, nil
-	}
-	return &sharedRows{inner: r, release: func() {}}, nil
+	// Materialise the whole result set while the lock is held and close the
+	// real cursor before returning. Holding the lock until the caller closed
+	// the rows deadlocked instead: issuing a query while iterating another
+	// query's rows is a normal database/sql pattern, and the second query
+	// would block forever on the lock the first query's open rows held.
+	return materializeRows(r)
 }
 
-// sharedRows holds the shared-connection lock until closed.
-type sharedRows struct {
-	inner   driver.Rows
-	release func()
-	closed  bool
+// memRows is an in-memory driver.Rows, detached from the shared connection.
+type memRows struct {
+	cols []string
+	data [][]driver.Value
+	i    int
 }
 
-func (r *sharedRows) Columns() []string { return r.inner.Columns() }
+func (m *memRows) Columns() []string { return m.cols }
+func (m *memRows) Close() error      { return nil }
 
-func (r *sharedRows) Next(dest []driver.Value) error { return r.inner.Next(dest) }
-
-func (r *sharedRows) Close() error {
-	err := r.inner.Close()
-	if !r.closed {
-		r.closed = true
-		r.release()
+func (m *memRows) Next(dest []driver.Value) error {
+	if m.i >= len(m.data) {
+		return io.EOF
 	}
-	return err
+	copy(dest, m.data[m.i])
+	m.i++
+	return nil
+}
+
+// materializeRows drains and closes r, deep-copying values whose backing
+// memory the driver may reuse between Next calls.
+func materializeRows(r driver.Rows) (*memRows, error) {
+	defer r.Close()
+	cols := r.Columns()
+	m := &memRows{cols: cols}
+	buf := make([]driver.Value, len(cols))
+	for {
+		if err := r.Next(buf); err != nil {
+			if err == io.EOF {
+				return m, nil
+			}
+			return nil, err
+		}
+		row := make([]driver.Value, len(cols))
+		for i, v := range buf {
+			if b, ok := v.([]byte); ok {
+				v = append([]byte(nil), b...)
+			}
+			row[i] = v
+		}
+		m.data = append(m.data, row)
+	}
 }
 
 // isMemoryDSN reports whether a SQLite DSN names an in-memory database.

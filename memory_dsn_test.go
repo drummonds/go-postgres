@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestIsMemoryDSN(t *testing.T) {
@@ -177,6 +178,73 @@ func TestSharedConnConcurrentTransactions(t *testing.T) {
 	}
 	if n != workers*txPerWorker {
 		t.Errorf("n = %d, want %d (lost updates)", n, workers*txPerWorker)
+	}
+}
+
+// TestSharedConnQueryWhileIterating verifies queries issued while another
+// query's rows are still open don't deadlock on the shared-connection
+// fallback. Regression: the lock was held until rows were closed, so this
+// completely normal database/sql pattern self-deadlocked ("all goroutines
+// are asleep" in the browser demo's DB explorer).
+func TestSharedConnQueryWhileIterating(t *testing.T) {
+	db := openSharedConnDB(t, "file::memory:")
+	db.SetMaxOpenConns(4)
+
+	if _, err := db.Exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	for i := 1; i <= 5; i++ {
+		if _, err := db.Exec(`INSERT INTO items (id, name) VALUES ($1, $2)`, i, "n"); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		rows, err := db.Query(`SELECT id FROM items ORDER BY id`)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int
+			if err := rows.Scan(&id); err != nil {
+				done <- err
+				return
+			}
+			// Nested query while the outer rows are open.
+			var name string
+			if err := db.QueryRow(`SELECT name FROM items WHERE id = $1`, id).Scan(&name); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- rows.Err()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("query while iterating: %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("deadlock: nested query never completed")
+	}
+
+	// Rows left unclosed must not wedge the database either.
+	leaked, err := db.Query(`SELECT id FROM items`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = leaked // deliberately not closed until test end
+	defer leaked.Close()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&n); err != nil {
+		t.Fatalf("query after leaked rows: %v", err)
+	}
+	if n != 5 {
+		t.Errorf("count = %d, want 5", n)
 	}
 }
 
