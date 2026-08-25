@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-08-25
+
 ### Fixed
 - Concurrent write transactions on in-memory DSNs no longer fail with
   "database is locked" (SQLITE_BUSY): the shared temp file is now opened
