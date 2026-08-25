@@ -4,6 +4,8 @@
 
 ## [0.5.7] - 2026-08-25
 
+## [0.5.7] - 2026-08-25
+
 ### Fixed
 - All in-memory DSN spellings (`file::memory:`, `file:...?mode=memory`, with
   or without query parameters) now share one database across pool
