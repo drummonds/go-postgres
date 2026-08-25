@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-08-25
+
 ### Fixed
 - The shared-connection fallback no longer holds its lock until query rows
   are closed — that deadlocked ("all goroutines are asleep") whenever a
