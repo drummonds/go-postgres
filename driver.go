@@ -5,15 +5,14 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"io"
 	"net/url"
-	"os"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ncruces/go-sqlite3"
 	_ "github.com/ncruces/go-sqlite3/driver"
+	"github.com/ncruces/go-sqlite3/vfs/memdb"
 )
 
 func init() {
@@ -26,35 +25,27 @@ var _ driver.DriverContext = (*Driver)(nil)
 // Driver wraps the ncruces/go-sqlite3 driver with PostgreSQL SQL translation.
 type Driver struct{}
 
+// memdbSeq numbers memdb databases so each in-memory connector gets its own.
+var memdbSeq atomic.Int64
+
 // OpenConnector implements driver.DriverContext.
-// For in-memory DSNs, it tries a temp file so pool connections share one
-// database. If temp file creation fails (e.g. WASM), it falls back to a single
-// shared connection protected by a mutex.
+// For in-memory DSNs, it backs the database with the pure-Go memdb VFS so all
+// pool connections share one database with real locking on every platform
+// (native, wasip1, browser WASM). Immediate transactions + busy_timeout are
+// required for concurrent pool connections: a deferred read-then-write
+// transaction on a rollback-journal database returns SQLITE_BUSY
+// ("database is locked") immediately, without consulting the busy handler,
+// when another connection holds the write lock.
 func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 	sqliteDSN := parseDSN(name)
 	c := &pglikeConnector{dsn: sqliteDSN, driver: d}
 
 	if isMemoryDSN(sqliteDSN) {
-		if tmpDSN, ok := tryTempFile(); ok {
-			// Temp file works — all pool connections share this file.
-			// WAL + immediate transactions + busy_timeout are required for
-			// concurrent pool connections: a deferred read-then-write
-			// transaction on a rollback-journal database returns SQLITE_BUSY
-			// ("database is locked") immediately, without consulting the
-			// busy handler, when another connection holds the write lock.
-			c.dsn = "file:" + tmpDSN + "?_txlock=immediate" +
-				"&_pragma=busy_timeout(10000)" +
-				"&_pragma=journal_mode(WAL)" +
-				"&_pragma=synchronous(NORMAL)"
-			c.tmpFile = tmpDSN
-		} else {
-			// No usable filesystem (WASM) — single shared connection.
-			inner, err := d.openConn(sqliteDSN)
-			if err != nil {
-				return nil, err
-			}
-			c.shared = inner
-		}
+		dbName := fmt.Sprintf("pglike-memdb-%d", memdbSeq.Add(1))
+		memdb.Create(dbName, nil)
+		c.dsn = "file:/" + dbName + "?vfs=memdb&_txlock=immediate" +
+			"&_pragma=busy_timeout(10000)"
+		c.memdbName = dbName
 	}
 
 	return c, nil
@@ -62,17 +53,12 @@ func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 
 // pglikeConnector implements driver.Connector.
 type pglikeConnector struct {
-	dsn     string
-	tmpFile string      // non-empty when backed by temp file
-	shared  driver.Conn // non-nil when using single shared connection (WASM)
-	mu      sync.Mutex  // guards shared connection access
-	driver  *Driver
+	dsn       string
+	memdbName string // non-empty when backed by a shared memdb database
+	driver    *Driver
 }
 
 func (c *pglikeConnector) Connect(_ context.Context) (driver.Conn, error) {
-	if c.shared != nil {
-		return &sharedConn{real: c.shared, mu: &c.mu}, nil
-	}
 	return c.driver.openConn(c.dsn)
 }
 
@@ -80,163 +66,12 @@ func (c *pglikeConnector) Driver() driver.Driver {
 	return c.driver
 }
 
-// Close cleans up temp files or the shared connection.
+// Close cleans up the shared memdb database.
 func (c *pglikeConnector) Close() error {
-	if c.shared != nil {
-		return c.shared.Close()
-	}
-	if c.tmpFile != "" {
-		os.Remove(c.tmpFile + "-wal")
-		os.Remove(c.tmpFile + "-shm")
-		return os.Remove(c.tmpFile)
+	if c.memdbName != "" {
+		memdb.Delete(c.memdbName)
 	}
 	return nil
-}
-
-// sharedConn wraps a single real connection with a mutex so the pool
-// can hand out multiple "connections" that serialise on one underlying conn.
-//
-// The mutex must be held for the full life of a transaction
-// (Begin→Commit/Rollback) and for the whole of each statement execution, not
-// just per driver call: the underlying SQLite connection is not
-// goroutine-safe, and interleaving statements from other pool "connections"
-// corrupts its state (panics inside SQLite) or joins them to a foreign
-// transaction. Query results are materialised and the cursor closed before
-// the lock is released, so no lock ever depends on the caller closing rows.
-type sharedConn struct {
-	real driver.Conn
-	mu   *sync.Mutex
-	held bool // mu is held long-term on behalf of this pseudo-connection
-}
-
-// acquire locks mu unless this pseudo-connection already holds it long-term
-// (an open transaction). Returns the matching release, a no-op if already
-// held. database/sql guarantees one goroutine uses a driver.Conn at a time,
-// so held is only touched by this connection's user.
-func (s *sharedConn) acquire() (release func()) {
-	if s.held {
-		return func() {}
-	}
-	s.mu.Lock()
-	return s.mu.Unlock
-}
-
-func (s *sharedConn) Prepare(query string) (driver.Stmt, error) {
-	release := s.acquire()
-	defer release()
-	st, err := s.real.Prepare(query)
-	if err != nil {
-		return nil, err
-	}
-	return &sharedStmt{inner: st, conn: s}, nil
-}
-
-func (s *sharedConn) Begin() (driver.Tx, error) {
-	s.mu.Lock()
-	tx, err := s.real.Begin() //nolint:staticcheck
-	if err != nil {
-		s.mu.Unlock()
-		return nil, err
-	}
-	s.held = true
-	return &sharedTx{inner: tx, conn: s}, nil
-}
-
-// Close is a no-op — the real connection is owned by the connector.
-func (s *sharedConn) Close() error { return nil }
-
-// sharedTx releases the long-term lock when the transaction ends.
-type sharedTx struct {
-	inner driver.Tx
-	conn  *sharedConn
-}
-
-func (t *sharedTx) end(err error) error {
-	t.conn.held = false
-	t.conn.mu.Unlock()
-	return err
-}
-
-func (t *sharedTx) Commit() error   { return t.end(t.inner.Commit()) }
-func (t *sharedTx) Rollback() error { return t.end(t.inner.Rollback()) }
-
-// sharedStmt serialises statement execution on the shared connection.
-type sharedStmt struct {
-	inner driver.Stmt
-	conn  *sharedConn
-}
-
-func (st *sharedStmt) Close() error {
-	release := st.conn.acquire()
-	defer release()
-	return st.inner.Close()
-}
-
-func (st *sharedStmt) NumInput() int { return st.inner.NumInput() }
-
-func (st *sharedStmt) Exec(args []driver.Value) (driver.Result, error) {
-	release := st.conn.acquire()
-	defer release()
-	return st.inner.Exec(args) //nolint:staticcheck
-}
-
-func (st *sharedStmt) Query(args []driver.Value) (driver.Rows, error) {
-	release := st.conn.acquire()
-	defer release()
-	r, err := st.inner.Query(args) //nolint:staticcheck
-	if err != nil {
-		return nil, err
-	}
-	// Materialise the whole result set while the lock is held and close the
-	// real cursor before returning. Holding the lock until the caller closed
-	// the rows deadlocked instead: issuing a query while iterating another
-	// query's rows is a normal database/sql pattern, and the second query
-	// would block forever on the lock the first query's open rows held.
-	return materializeRows(r)
-}
-
-// memRows is an in-memory driver.Rows, detached from the shared connection.
-type memRows struct {
-	cols []string
-	data [][]driver.Value
-	i    int
-}
-
-func (m *memRows) Columns() []string { return m.cols }
-func (m *memRows) Close() error      { return nil }
-
-func (m *memRows) Next(dest []driver.Value) error {
-	if m.i >= len(m.data) {
-		return io.EOF
-	}
-	copy(dest, m.data[m.i])
-	m.i++
-	return nil
-}
-
-// materializeRows drains and closes r, deep-copying values whose backing
-// memory the driver may reuse between Next calls.
-func materializeRows(r driver.Rows) (*memRows, error) {
-	defer r.Close()
-	cols := r.Columns()
-	m := &memRows{cols: cols}
-	buf := make([]driver.Value, len(cols))
-	for {
-		if err := r.Next(buf); err != nil {
-			if err == io.EOF {
-				return m, nil
-			}
-			return nil, err
-		}
-		row := make([]driver.Value, len(cols))
-		for i, v := range buf {
-			if b, ok := v.([]byte); ok {
-				v = append([]byte(nil), b...)
-			}
-			row[i] = v
-		}
-		m.data = append(m.data, row)
-	}
 }
 
 // isMemoryDSN reports whether a SQLite DSN names an in-memory database.
@@ -258,66 +93,6 @@ func isMemoryDSN(dsn string) bool {
 		rest = rest[:q]
 	}
 	return rest == ":memory:" || rest == ""
-}
-
-// tryTempFile creates a temp file and verifies two separate SQLite connections
-// can share data through it. ncruces WASM modules have isolated filesystems,
-// so this test fails in WASM even though os.CreateTemp succeeds.
-// Returns the file path and true on success, or cleans up and returns false.
-func tryTempFile() (string, bool) {
-	f, err := os.CreateTemp("", "pglike-*.db")
-	if err != nil {
-		return "", false
-	}
-	name := f.Name()
-	f.Close()
-
-	drv := getSQLiteDriver()
-	if drv == nil {
-		os.Remove(name)
-		return "", false
-	}
-
-	// Write a marker table from connection 1.
-	c1, err := drv.Open(name)
-	if err != nil {
-		os.Remove(name)
-		return "", false
-	}
-	s, err := c1.Prepare("CREATE TABLE _pglike_probe (v INTEGER)")
-	if err != nil {
-		c1.Close()
-		os.Remove(name)
-		return "", false
-	}
-	s.Exec(nil) //nolint:staticcheck,errcheck
-	s.Close()
-	c1.Close()
-
-	// Verify connection 2 can see the table.
-	c2, err := drv.Open(name)
-	if err != nil {
-		os.Remove(name)
-		return "", false
-	}
-	s2, err := c2.Prepare("SELECT v FROM _pglike_probe LIMIT 0")
-	if err != nil {
-		// Second connection can't see the table — isolated FS.
-		c2.Close()
-		os.Remove(name)
-		return "", false
-	}
-	s2.Close()
-
-	// Clean up probe table.
-	s3, _ := c2.Prepare("DROP TABLE _pglike_probe")
-	if s3 != nil {
-		s3.Exec(nil) //nolint:staticcheck,errcheck
-		s3.Close()
-	}
-	c2.Close()
-
-	return name, true
 }
 
 // Open parses the DSN and opens a SQLite connection via the underlying driver.

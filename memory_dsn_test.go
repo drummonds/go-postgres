@@ -96,98 +96,17 @@ func TestMemoryDSNConcurrentWriteTransactions(t *testing.T) {
 	}
 }
 
-// openSharedConnDB builds a DB on the single-shared-connection fallback the
-// driver uses when no temp file is usable (the WASM path), so that code path
-// is testable natively.
-func openSharedConnDB(t *testing.T, dsn string) *sql.DB {
-	t.Helper()
-	d := &Driver{}
-	inner, err := d.openConn(parseDSN(dsn))
+// TestMemoryDSNQueryWhileIterating verifies queries issued while another
+// query's rows are still open don't deadlock on an in-memory database.
+// Regression (from the retired shared-connection fallback): a lock held until
+// rows were closed self-deadlocked this completely normal database/sql
+// pattern ("all goroutines are asleep" in the browser demo's DB explorer).
+func TestMemoryDSNQueryWhileIterating(t *testing.T) {
+	db, err := sql.Open("pglike", "file::memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := sql.OpenDB(&pglikeConnector{dsn: parseDSN(dsn), driver: d, shared: inner})
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
-// TestSharedConnConcurrentTransactions exercises the WASM single-shared-
-// connection fallback under concurrent transactions and overlapping reads.
-// Regression: the mutex was only held per Prepare/Begin call, so two pool
-// "connections" could interleave statements on the one real SQLite
-// connection — a second BEGIN inside an open transaction, statements joining
-// a foreign transaction — crashing the gobank demo in the browser.
-func TestSharedConnConcurrentTransactions(t *testing.T) {
-	db := openSharedConnDB(t, "file::memory:?_pragma=temp_store(2)")
-	db.SetMaxOpenConns(4)
-
-	if _, err := db.Exec(`CREATE TABLE counters (id INTEGER PRIMARY KEY, n INTEGER NOT NULL)`); err != nil {
-		t.Fatalf("create table: %v", err)
-	}
-	if _, err := db.Exec(`INSERT INTO counters (id, n) VALUES (1, 0)`); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
-
-	const workers = 8
-	const txPerWorker = 25
-	var wg sync.WaitGroup
-	errs := make(chan error, 2*workers*txPerWorker)
-	for range workers {
-		wg.Go(func() {
-			for range txPerWorker {
-				tx, err := db.Begin()
-				if err != nil {
-					errs <- err
-					continue
-				}
-				var n int
-				if err := tx.QueryRow(`SELECT n FROM counters WHERE id = 1`).Scan(&n); err != nil {
-					errs <- err
-					_ = tx.Rollback()
-					continue
-				}
-				if _, err := tx.Exec(`UPDATE counters SET n = $1 WHERE id = 1`, n+1); err != nil {
-					errs <- err
-					_ = tx.Rollback()
-					continue
-				}
-				if err := tx.Commit(); err != nil {
-					errs <- err
-				}
-			}
-		})
-		// A polling reader alongside each writer, like the demo dashboard.
-		wg.Go(func() {
-			for range txPerWorker {
-				var n int
-				if err := db.QueryRow(`SELECT n FROM counters WHERE id = 1`).Scan(&n); err != nil {
-					errs <- err
-				}
-			}
-		})
-	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		t.Errorf("concurrent op: %v", err)
-	}
-
-	var n int
-	if err := db.QueryRow(`SELECT n FROM counters WHERE id = 1`).Scan(&n); err != nil {
-		t.Fatalf("final read: %v", err)
-	}
-	if n != workers*txPerWorker {
-		t.Errorf("n = %d, want %d (lost updates)", n, workers*txPerWorker)
-	}
-}
-
-// TestSharedConnQueryWhileIterating verifies queries issued while another
-// query's rows are still open don't deadlock on the shared-connection
-// fallback. Regression: the lock was held until rows were closed, so this
-// completely normal database/sql pattern self-deadlocked ("all goroutines
-// are asleep" in the browser demo's DB explorer).
-func TestSharedConnQueryWhileIterating(t *testing.T) {
-	db := openSharedConnDB(t, "file::memory:")
+	defer db.Close()
 	db.SetMaxOpenConns(4)
 
 	if _, err := db.Exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
