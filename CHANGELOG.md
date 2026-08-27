@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-08-27
+
+ - Upgrade ncruces/go-sqlite3 to v0.35.3; in-memory DSNs now use the memdb VFS on all platforms
+
 ### Changed
 - Upgraded `ncruces/go-sqlite3` from a March 2026 pre-release pin to
   v0.35.3 (SQLite 3.53.x via the released wasm2go mainline).
