@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Changed
+- Upgraded `ncruces/go-sqlite3` from a March 2026 pre-release pin to
+  v0.35.3 (SQLite 3.53.x via the released wasm2go mainline).
+- In-memory DSNs are now backed by the pure-Go `memdb` VFS instead of a
+  shared temp file: all pool connections share one named in-memory
+  database with real locking, identically on native, wasip1 and browser
+  WASM. Note memdb allows a single writer at a time (no WAL write
+  concurrency); heavily concurrent writers serialise via the busy
+  handler.
+
+### Removed
+- The single-shared-connection WASM fallback (and its per-open temp-file
+  probe) — unreachable now that memdb serves every platform. Its
+  query-while-iterating regression test now runs against the public API.
+
+### Fixed
+- Under wasip1, upstream v0.35.3's file locking made temp files unusable
+  (`disk I/O error`), which silently degraded in-memory databases to the
+  shared-connection fallback — losing multi-statement `Exec` and
+  `ADD COLUMN IF NOT EXISTS`, and deadlocking when a pool connection
+  queried during another's open transaction. The memdb backing removes
+  that whole failure mode.
+
 ## [0.5.10] - 2026-08-25
 
 ### Fixed
