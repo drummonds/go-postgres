@@ -25,3 +25,13 @@ SELECT $1::INTEGER + 1
 -- params: 41
 -- expect:
 42
+
+-- case: param reused within one statement binds once
+-- setup:
+CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, alias TEXT);
+INSERT INTO items (id, name, alias) VALUES (1, 'widget', 'w'), (2, 'gadget', 'gadget');
+-- query:
+SELECT id FROM items WHERE name = $1 OR alias = $1 ORDER BY id
+-- params: gadget
+-- expect:
+2

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- `pg_tables` and `pg_views` catalog views (bare or `pg_catalog.`-qualified),
+  so `SELECT tablename FROM pg_tables WHERE schemaname = 'public'` works
+  unchanged. Completes the query set from #17.
+
+### Fixed
+- A `$N` parameter reused within one statement (`WHERE a = $1 OR b = $1`)
+  now binds once, as in PostgreSQL. Placeholders are translated to SQLite's
+  numbered `?N` form instead of positional `?`, which also fixes
+  out-of-order parameters (`$2 ... $1`) binding to the wrong argument.
+
 ### Changed
 - README: the SQLite URI example no longer suggests `_pragma=foreign_keys(1)`,
   which is redundant because `ncruces/go-sqlite3` enables foreign keys by

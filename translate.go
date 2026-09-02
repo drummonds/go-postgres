@@ -1,6 +1,7 @@
 package pglike
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -438,15 +439,37 @@ func stmtHasContent(tokens []Token) bool {
 	return false
 }
 
-// countTokenParams counts the number of parameter tokens ($1, $2, ...) in a token stream.
+// countTokenParams returns how many distinct bind arguments a statement
+// needs: the span from its lowest to its highest $N. A placeholder reused
+// within one statement ($1 ... $1) counts once, matching PostgreSQL.
 func countTokenParams(tokens []Token) int {
-	n := 0
-	for _, t := range tokens {
-		if t.Kind == TokParam {
-			n++
-		}
+	lo, hi, ok := paramRange(tokens)
+	if !ok {
+		return 0
 	}
-	return n
+	return hi - lo + 1
+}
+
+// paramRange returns the lowest and highest $N in the token stream.
+// ok is false when the stream has no parameters.
+func paramRange(tokens []Token) (lo, hi int, ok bool) {
+	for _, t := range tokens {
+		if t.Kind != TokParam {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(t.Value, "$"))
+		if err != nil {
+			continue
+		}
+		if !ok || n < lo {
+			lo = n
+		}
+		if !ok || n > hi {
+			hi = n
+		}
+		ok = true
+	}
+	return lo, hi, ok
 }
 
 // translateExplain rewrites EXPLAIN [ANALYZE] [VERBOSE] → EXPLAIN QUERY PLAN.
@@ -537,14 +560,29 @@ func tryDollarQuote(runes []rune, i, n int) (tag []rune, end int, ok bool) {
 	return nil, 0, false
 }
 
-// translateParams converts $1, $2, ... to ? placeholders.
+// translateParams converts $1, $2, ... to SQLite numbered placeholders
+// ?1, ?2, ... so a parameter reused within a statement ($1 ... $1) binds
+// once, as in PostgreSQL. Numbers are rebased so the statement's lowest
+// $N becomes ?1: multi-statement batches number their parameters
+// sequentially across statements ($1; $2, $3) and each statement is
+// executed on its own with its slice of the args.
 func translateParams(tokens []Token) []Token {
 	out := make([]Token, len(tokens))
 	copy(out, tokens)
+	lo, _, ok := paramRange(tokens)
+	if !ok {
+		return out
+	}
 	for i := range out {
-		if out[i].Kind == TokParam {
-			out[i] = Token{Kind: TokOperator, Value: "?", Raw: "?"}
+		if out[i].Kind != TokParam {
+			continue
 		}
+		n, err := strconv.Atoi(strings.TrimPrefix(out[i].Value, "$"))
+		if err != nil {
+			continue
+		}
+		ph := "?" + strconv.Itoa(n-lo+1)
+		out[i] = Token{Kind: TokOperator, Value: ph, Raw: ph}
 	}
 	return out
 }

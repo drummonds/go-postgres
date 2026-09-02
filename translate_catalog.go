@@ -17,6 +17,8 @@ var catalogSchemaMap = map[string]map[string]string{
 		"constraint_column_usage": "_pglike_information_schema_constraint_column_usage",
 	},
 	"pg_catalog": {
+		"pg_tables":        "_pglike_pg_tables",
+		"pg_views":         "_pglike_pg_views",
 		"pg_indexes":       "_pglike_pg_indexes",
 		"pg_index_columns": "_pglike_pg_index_columns",
 	},
@@ -25,6 +27,8 @@ var catalogSchemaMap = map[string]map[string]string{
 // catalogBareMap maps unqualified PG catalog references that PG users
 // typically write without the pg_catalog. prefix.
 var catalogBareMap = map[string]string{
+	"pg_tables":        "_pglike_pg_tables",
+	"pg_views":         "_pglike_pg_views",
 	"pg_indexes":       "_pglike_pg_indexes",
 	"pg_index_columns": "_pglike_pg_index_columns",
 }

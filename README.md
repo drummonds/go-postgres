@@ -155,7 +155,7 @@ These functions are registered as SQLite custom functions and can be called dire
 
 ## Catalog Views
 
-PG-style catalog queries work out of the box. On every new connection, the driver installs `TEMP VIEW`s that expose the same shape as PostgreSQL's `information_schema` and `pg_indexes`, backed by SQLite's own catalog (`sqlite_master`, `pragma_table_info`, `pragma_foreign_key_list`, `pragma_index_list`/`_info`). The translator rewrites canonical PG references to the underlying view names so the same SQL runs on pglike and real Postgres.
+PG-style catalog queries work out of the box. On every new connection, the driver installs `TEMP VIEW`s that expose the same shape as PostgreSQL's `information_schema`, `pg_tables`, `pg_views` and `pg_indexes`, backed by SQLite's own catalog (`sqlite_master`, `pragma_table_info`, `pragma_foreign_key_list`, `pragma_index_list`/`_info`). The translator rewrites canonical PG references to the underlying view names so the same SQL runs on pglike and real Postgres.
 
 | Catalog reference | Notes |
 |---|---|
@@ -165,6 +165,8 @@ PG-style catalog queries work out of the box. On every new connection, the drive
 | `information_schema.key_column_usage` | One row per column in a PK or FK |
 | `information_schema.referential_constraints` | FK metadata: `update_rule`, `delete_rule` |
 | `information_schema.constraint_column_usage` | Columns referenced by a constraint (parent-side for FKs) |
+| `pg_tables` | `schemaname='public'`, `tablename`, `hasindexes`; owner/tablespace are NULL |
+| `pg_views` | `schemaname='public'`, `viewname`, `definition` (raw `CREATE VIEW` text) |
 | `pg_indexes` | `schemaname='public'`, `tablename`, `indexname`, `indexdef` (raw `CREATE INDEX` text) |
 | `pg_index_columns` | pglike-specific: index columns flat — `indexname`, `column_name`, `ordinal_position`, `is_unique` |
 

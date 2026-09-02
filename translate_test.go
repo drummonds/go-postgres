@@ -356,12 +356,22 @@ func TestTranslateParams(t *testing.T) {
 		{
 			name:  "$1 param",
 			input: "SELECT * FROM t WHERE id = $1",
-			want:  "SELECT * FROM t WHERE id = ?",
+			want:  "SELECT * FROM t WHERE id = ?1",
 		},
 		{
 			name:  "multiple params",
 			input: "INSERT INTO t (a, b) VALUES ($1, $2)",
-			want:  "INSERT INTO t (a, b) VALUES (?, ?)",
+			want:  "INSERT INTO t (a, b) VALUES (?1, ?2)",
+		},
+		{
+			name:  "reused param binds once",
+			input: "SELECT * FROM t WHERE a = $1 OR b = $1",
+			want:  "SELECT * FROM t WHERE a = ?1 OR b = ?1",
+		},
+		{
+			name:  "out-of-order params keep their numbers",
+			input: "SELECT * FROM t WHERE a = $2 AND b = $1",
+			want:  "SELECT * FROM t WHERE a = ?2 AND b = ?1",
 		},
 	}
 
@@ -747,7 +757,7 @@ func TestDollarQuotedStrings(t *testing.T) {
 		{
 			name:  "$$ with param still works",
 			input: "SELECT $1, $$literal$$",
-			want:  "SELECT ?, 'literal'",
+			want:  "SELECT ?1, 'literal'",
 		},
 	}
 
@@ -859,7 +869,7 @@ func TestTranslateMulti(t *testing.T) {
 			wantCount: 2,
 			wantSQL: []string{
 				"CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)",
-				" INSERT INTO t VALUES (?, ?)",
+				" INSERT INTO t VALUES (?1, ?2)",
 			},
 		},
 	}
@@ -895,6 +905,21 @@ func TestTranslateMultiParamCount(t *testing.T) {
 	}
 	if stmts[1].NumParams != 2 {
 		t.Errorf("statement 1 params = %d, want 2", stmts[1].NumParams)
+	}
+	// Each statement runs alone with its own slice of args, so its
+	// placeholders are rebased to start at ?1.
+	if want := " INSERT INTO b VALUES (?1, ?2)"; stmts[1].SQL != want {
+		t.Errorf("statement 1 SQL = %q, want %q", stmts[1].SQL, want)
+	}
+}
+
+func TestTranslateMultiReusedParamCount(t *testing.T) {
+	stmts, err := TranslateMulti("SELECT $1, $1")
+	if err != nil {
+		t.Fatalf("TranslateMulti() error: %v", err)
+	}
+	if stmts[0].NumParams != 1 {
+		t.Errorf("params = %d, want 1", stmts[0].NumParams)
 	}
 }
 

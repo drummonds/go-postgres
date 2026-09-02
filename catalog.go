@@ -1,7 +1,8 @@
 package pglike
 
 // catalogViews are the TEMP VIEW DDLs installed on every new connection so
-// that PG-style catalog queries (information_schema.*, pg_indexes) work
+// that PG-style catalog queries (information_schema.*, pg_tables, pg_views,
+// pg_indexes) work
 // against the underlying SQLite database.
 //
 // Names are mangled to a single SQLite identifier (`_pglike_<schema>_<view>`)
@@ -142,6 +143,34 @@ var catalogViews = []string{
 	  AND m.name NOT LIKE 'sqlite_%'
 	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'
 	  AND m.name <> '_sequences'`,
+
+	// pg_tables: PG's view of tables (not views). Ownership/tablespace
+	// columns are NULL; the boolean flags match PG's defaults.
+	`CREATE TEMP VIEW _pglike_pg_tables AS
+	SELECT 'public' AS schemaname,
+	       m.name AS tablename,
+	       NULL AS tableowner,
+	       NULL AS tablespace,
+	       EXISTS (SELECT 1 FROM pragma_index_list(m.name)) AS hasindexes,
+	       0 AS hasrules,
+	       0 AS hastriggers,
+	       0 AS rowsecurity
+	FROM sqlite_master m
+	WHERE m.type = 'table'
+	  AND m.name NOT LIKE 'sqlite_%'
+	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'
+	  AND m.name <> '_sequences'`,
+
+	// pg_views: PG's view of views, with the original CREATE VIEW text.
+	`CREATE TEMP VIEW _pglike_pg_views AS
+	SELECT 'public' AS schemaname,
+	       m.name AS viewname,
+	       NULL AS viewowner,
+	       m.sql AS definition
+	FROM sqlite_master m
+	WHERE m.type = 'view'
+	  AND m.name NOT LIKE 'sqlite_%'
+	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'`,
 
 	// pg_indexes: PG's view listing indexes with their DDL.
 	// SQLite stores the original CREATE INDEX text in sqlite_master.sql.

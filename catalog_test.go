@@ -296,3 +296,121 @@ func TestEqualSlices(t *testing.T) {
 		t.Fail()
 	}
 }
+
+// TestCatalogExplorerQueries runs the exact catalog queries the gobank DB
+// explorer issues against real PostgreSQL (issue #17), scanning into the
+// same Go types, so the explorer needs no pglike-specific branches.
+func TestCatalogExplorerQueries(t *testing.T) {
+	db := openTestDB(t)
+	for _, s := range []string{
+		`CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, email TEXT UNIQUE)`,
+		`CREATE TABLE orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, total NUMERIC(10,2))`,
+		`CREATE INDEX idx_orders_user ON orders (user_id)`,
+		`CREATE VIEW v_users AS SELECT id, name FROM users`,
+	} {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("setup: %s\n%v", s, err)
+		}
+	}
+
+	// 1. Table list.
+	var tables []string
+	rows, err := db.Query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`)
+	if err != nil {
+		t.Fatalf("pg_tables: %v", err)
+	}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		tables = append(tables, n)
+	}
+	rows.Close()
+	if !equalSlices(tables, []string{"orders", "users"}) {
+		t.Errorf("pg_tables = %v, want [orders users]", tables)
+	}
+
+	// 2. Columns with PK flag; $1 is reused.
+	type col struct {
+		pos            int
+		name, typ, def string
+		notNull, isPK  bool
+	}
+	var cols []col
+	rows, err = db.Query(`SELECT c.ordinal_position, c.column_name, c.data_type,
+       c.is_nullable = 'NO', COALESCE(c.column_default, ''), COALESCE(pk.is_pk, false)
+FROM information_schema.columns c
+LEFT JOIN (SELECT kcu.column_name, true AS is_pk
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+    WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public' AND tc.table_name = $1
+) pk ON pk.column_name = c.column_name
+WHERE c.table_schema = 'public' AND c.table_name = $1
+ORDER BY c.ordinal_position`, "orders")
+	if err != nil {
+		t.Fatalf("columns: %v", err)
+	}
+	for rows.Next() {
+		var c col
+		if err := rows.Scan(&c.pos, &c.name, &c.typ, &c.notNull, &c.def, &c.isPK); err != nil {
+			t.Fatal(err)
+		}
+		cols = append(cols, c)
+	}
+	rows.Close()
+	if len(cols) != 3 {
+		t.Fatalf("columns = %+v, want 3 rows", cols)
+	}
+	if cols[0].name != "id" || !cols[0].isPK || !cols[0].notNull || cols[0].def != "gen_random_uuid()" {
+		t.Errorf("id column = %+v", cols[0])
+	}
+	if cols[1].name != "user_id" || cols[1].isPK || !cols[1].notNull {
+		t.Errorf("user_id column = %+v", cols[1])
+	}
+	if cols[2].name != "total" || cols[2].isPK || cols[2].notNull {
+		t.Errorf("total column = %+v", cols[2])
+	}
+
+	// 3. Foreign keys with rules.
+	var fkName, fkCol, fkTable, fkRef, upd, del string
+	err = db.QueryRow(`SELECT tc.constraint_name, kcu.column_name, ccu.table_name, ccu.column_name,
+       rc.update_rule, rc.delete_rule
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+  ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+JOIN information_schema.constraint_column_usage ccu
+  ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+JOIN information_schema.referential_constraints rc
+  ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.table_schema
+WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public' AND tc.table_name = $1
+ORDER BY tc.constraint_name, kcu.ordinal_position`, "orders").
+		Scan(&fkName, &fkCol, &fkTable, &fkRef, &upd, &del)
+	if err != nil {
+		t.Fatalf("foreign keys: %v", err)
+	}
+	if fkCol != "user_id" || fkTable != "users" || fkRef != "id" || del != "CASCADE" || upd != "NO ACTION" {
+		t.Errorf("fk = %s %s -> %s.%s update=%s delete=%s", fkName, fkCol, fkTable, fkRef, upd, del)
+	}
+
+	// 4. Indexes.
+	var idxName, idxDef string
+	err = db.QueryRow(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = $1 ORDER BY indexname`, "orders").
+		Scan(&idxName, &idxDef)
+	if err != nil {
+		t.Fatalf("pg_indexes: %v", err)
+	}
+	if idxName != "idx_orders_user" || idxDef == "" {
+		t.Errorf("index = %s %q", idxName, idxDef)
+	}
+
+	// Views are listed by pg_views, not pg_tables.
+	var viewName string
+	if err := db.QueryRow(`SELECT viewname FROM pg_catalog.pg_views WHERE schemaname = 'public'`).Scan(&viewName); err != nil {
+		t.Fatalf("pg_views: %v", err)
+	}
+	if viewName != "v_users" {
+		t.Errorf("pg_views = %q, want v_users", viewName)
+	}
+}
