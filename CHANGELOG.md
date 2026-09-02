@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.12] - 2026-09-02
+
+ - Fix DEFAULT gen_random_uuid() and other function-call defaults in CREATE TABLE
+
 ### Fixed
 - `DEFAULT gen_random_uuid()` (and any other function call) in a column
   definition no longer fails with `near "(": syntax error`. SQLite only
