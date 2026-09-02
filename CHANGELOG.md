@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- `DEFAULT gen_random_uuid()` (and any other function call) in a column
+  definition no longer fails with `near "(": syntax error`. SQLite only
+  accepts a bare literal after `DEFAULT`, so the DDL translator now wraps
+  function-call defaults in parentheses, as it already did for `now()`
+  and `CURRENT_TIMESTAMP`. New corpus cases cover both
+  `DEFAULT gen_random_uuid()` and `TIMESTAMPTZ NOT NULL DEFAULT now()`.
+  Closes #9 and #10.
+
 ## [0.5.11] - 2026-08-27
 
  - Upgrade ncruces/go-sqlite3 to v0.35.3; in-memory DSNs now use the memdb VFS on all platforms

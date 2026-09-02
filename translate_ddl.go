@@ -350,7 +350,8 @@ func skipParenGroup(tokens []Token, start int) int {
 }
 
 // translateDefaultNow converts DEFAULT NOW() and DEFAULT CURRENT_TIMESTAMP/CURRENT_DATE/CURRENT_TIME
-// to DEFAULT (datetime('now')), DEFAULT (date('now')), or DEFAULT (time('now')).
+// to DEFAULT (datetime('now')), DEFAULT (date('now')), or DEFAULT (time('now')), and wraps
+// any other DEFAULT function call (e.g. gen_random_uuid()) in parentheses.
 // SQLite requires function calls in DEFAULT clauses to be wrapped in parentheses.
 func translateDefaultNow(tokens []Token) []Token {
 	// Map of CURRENT_* keywords to their SQLite function equivalents.
@@ -416,10 +417,54 @@ func translateDefaultNow(tokens []Token) []Token {
 				}
 			}
 
+			// Any other function call (gen_random_uuid(), uuid_generate_v4(), ...):
+			// SQLite only allows a bare literal after DEFAULT, so wrap the whole
+			// call in parentheses. PostgreSQL accepts the parenthesised form too.
+			if j < len(tokens) && (tokens[j].Kind == TokIdent || tokens[j].Kind == TokKeyword) {
+				k := j + 1
+				for k < len(tokens) && tokens[k].Kind == TokWhitespace {
+					k++
+				}
+				if k < len(tokens) && tokens[k].Kind == TokParen && tokens[k].Value == "(" {
+					end := findMatchingParen(tokens, k)
+					if end > k {
+						out = append(out,
+							Token{Kind: TokWhitespace, Value: " ", Raw: " "},
+							Token{Kind: TokParen, Value: "(", Raw: "("},
+						)
+						out = append(out, tokens[j:end+1]...)
+						out = append(out, Token{Kind: TokParen, Value: ")", Raw: ")"})
+						i = end
+						continue
+					}
+				}
+			}
+
 			// Not a recognized datetime default, just pass through DEFAULT
 			continue
 		}
 		out = append(out, t)
 	}
 	return out
+}
+
+// findMatchingParen returns the index of the ")" matching the "(" at open,
+// or -1 if the parentheses are unbalanced.
+func findMatchingParen(tokens []Token, open int) int {
+	depth := 0
+	for i := open; i < len(tokens); i++ {
+		if tokens[i].Kind != TokParen {
+			continue
+		}
+		switch tokens[i].Value {
+		case "(":
+			depth++
+		case ")":
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }

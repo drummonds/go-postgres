@@ -126,6 +126,26 @@ func TestTranslateDDL(t *testing.T) {
 			want:  "CREATE TABLE t (created_at TEXT DEFAULT (time('now')))",
 		},
 		{
+			name:  "DEFAULT gen_random_uuid()",
+			input: "CREATE TABLE t (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ts TIMESTAMP NOT NULL)",
+			want:  "CREATE TABLE t (id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()), ts TEXT NOT NULL)",
+		},
+		{
+			name:  "DEFAULT function call with arguments",
+			input: "CREATE TABLE t (name TEXT DEFAULT upper('x'), n INTEGER)",
+			want:  "CREATE TABLE t (name TEXT DEFAULT (upper('x')), n INTEGER)",
+		},
+		{
+			name:  "DEFAULT already parenthesised is left alone",
+			input: "CREATE TABLE t (id UUID PRIMARY KEY DEFAULT (gen_random_uuid()))",
+			want:  "CREATE TABLE t (id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()))",
+		},
+		{
+			name:  "DEFAULT literal is left alone",
+			input: "CREATE TABLE t (a INTEGER DEFAULT -1, b TEXT DEFAULT 'x', c TEXT DEFAULT NULL)",
+			want:  "CREATE TABLE t (a INTEGER DEFAULT -1, b TEXT DEFAULT 'x', c TEXT DEFAULT NULL)",
+		},
+		{
 			name:  "complex table",
 			input: "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, email VARCHAR(255) UNIQUE, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW())",
 			want:  "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')))",

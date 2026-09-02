@@ -58,6 +58,24 @@ SELECT created_at FROM t
 -- expect-match:
 \d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}.*
 
+-- case: uuid default gen_random_uuid is populated
+-- setup:
+CREATE TABLE t (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ts TIMESTAMP NOT NULL);
+INSERT INTO t (ts) VALUES ('2026-02-02 10:00:00');
+-- query:
+SELECT id FROM t
+-- expect-match:
+[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
+
+-- case: timestamptz default now with not null is populated
+-- setup:
+CREATE TABLE t (id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+INSERT INTO t (id) VALUES (1);
+-- query:
+SELECT created_at FROM t
+-- expect-match:
+\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}.*
+
 -- case: numeric column preserves precision
 -- setup:
 CREATE TABLE prices (id INTEGER PRIMARY KEY, price NUMERIC(20,10));
