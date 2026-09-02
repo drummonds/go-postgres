@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+- README: the SQLite URI example no longer suggests `_pragma=foreign_keys(1)`,
+  which is redundant because `ncruces/go-sqlite3` enables foreign keys by
+  default. The `:memory:` pooling section and RESEARCH.md now describe the
+  memdb backing introduced in v0.5.11 instead of the removed temp-file and
+  single-connection fallbacks. Thanks to @ncruces for the pointers.
+
 ## [0.5.12] - 2026-09-02
 
  - Fix DEFAULT gen_random_uuid() and other function-call defaults in CREATE TABLE

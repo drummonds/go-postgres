@@ -74,7 +74,7 @@ The driver accepts several DSN formats:
 | Format | Example | Behaviour |
 |--------|---------|-----------|
 | SQLite file path | `myapp.db` | Opens the file directly |
-| SQLite URI | `file:myapp.db?_pragma=foreign_keys(1)` | Passed through to SQLite |
+| SQLite URI | `file:myapp.db?_pragma=busy_timeout(5000)` | Passed through to SQLite (foreign keys are already on by default) |
 | In-memory | `:memory:` | SQLite in-memory database (pooling handled automatically) |
 | PostgreSQL URL | `postgres://user:pass@localhost/myapp` | Extracts `myapp` as filename `myapp.db` |
 | PG key=value | `host=localhost dbname=myapp` | Extracts `myapp` as filename `myapp.db` |
@@ -192,12 +192,9 @@ The driver works under `GOOS=wasip1 GOARCH=wasm`. The underlying SQLite engine (
 
 ### `:memory:` connection pooling
 
-Go's `database/sql` connection pool can open multiple connections. With `:memory:`, each connection normally gets its own empty database. The driver handles this automatically:
+Go's `database/sql` connection pool can open multiple connections. With `:memory:`, each connection normally gets its own empty database. The driver handles this automatically by backing every in-memory DSN with the pure-Go `memdb` VFS from `ncruces/go-sqlite3`: all pool connections share one named in-memory database with real locking, identically on native, `wasip1` and browser WASM. Note that memdb allows a single writer at a time; heavily concurrent writers serialise via the busy handler.
 
-- **Native**: creates a temp file so all pool connections share one database (full concurrency)
-- **WASM**: ncruces WASM modules have isolated filesystems, so temp files can't be shared across connections. The driver detects this and falls back to a single shared connection with mutex serialization.
-
-No user configuration is needed — `sql.Open("pglike", ":memory:")` works correctly in both environments.
+No user configuration is needed — `sql.Open("pglike", ":memory:")` works correctly in every environment.
 
 ### Running tests under WASM
 

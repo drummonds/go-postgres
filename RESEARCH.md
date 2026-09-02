@@ -365,12 +365,13 @@ Not yet wired into the driver by default. See
 Only handles `FROM generate_series(...)` — not subqueries or joins with generate_series.
 The CTE prepend restructures the whole query.
 
-### 6. WASM `:memory:` Concurrency
+### 6. `:memory:` Write Concurrency
 
-Under WASM (`wasip1`), `:memory:` databases use a single shared connection with mutex
-serialization. This means all pool connections are serialized — fine for testing, but
-not suitable for concurrent workloads. File-based DSNs are unaffected (each connection
-opens the file independently).
+Since v0.5.11, `:memory:` databases are backed by the `memdb` VFS on every platform
+(native, `wasip1` and browser WASM), so all pool connections share one database with
+real locking. memdb allows a single writer at a time (no WAL write concurrency), so
+heavily concurrent writers serialise via the busy handler. File-based DSNs are
+unaffected (each connection opens the file independently).
 
 ### 7. SIMILAR TO Regex Conversion
 
