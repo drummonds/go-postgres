@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-09-02
+
+ - Add pg_tables/pg_views catalog views; numbered parameters so a reused $N binds once
+
 ### Added
 - `pg_tables` and `pg_views` catalog views (bare or `pg_catalog.`-qualified),
   so `SELECT tablename FROM pg_tables WHERE schemaname = 'public'` works
