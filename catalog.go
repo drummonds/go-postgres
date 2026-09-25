@@ -11,7 +11,8 @@ package pglike
 // rewrites canonical PG references (e.g. `information_schema.columns`) to
 // these mangled names so callers write portable SQL.
 //
-// Coverage is the minimum needed by lofidb's table/column/FK/index browsing.
+// Coverage is the minimum needed by go-dbexplorer's table/column/FK/index
+// browsing (formerly lofidb, now archived).
 // PG's information_schema is much larger; we fill it in as needs arise.
 var catalogViews = []string{
 	// Tables: BASE TABLE for user tables, VIEW for views, internal helpers hidden.
