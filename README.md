@@ -159,15 +159,16 @@ PG-style catalog queries work out of the box. On every new connection, the drive
 
 | Catalog reference | Notes |
 |---|---|
-| `information_schema.tables` | `table_catalog`, `table_schema='public'`, `table_name`, `table_type` (`BASE TABLE` or `VIEW`) |
-| `information_schema.columns` | `column_name`, `data_type`, `is_nullable`, `ordinal_position` (1-based), `column_default` |
+| `information_schema.schemata` | `public` plus schemas made with `CREATE SCHEMA` |
+| `information_schema.tables` | `table_catalog`, `table_schema`, `table_name`, `table_type` (`BASE TABLE` or `VIEW`) |
+| `information_schema.columns` | `column_name`, `data_type`/`udt_name` (the PG type as declared, e.g. `bigint`/`int8`), `is_nullable`, `ordinal_position` (1-based), `column_default` |
 | `information_schema.table_constraints` | `PRIMARY KEY`, `FOREIGN KEY`, `UNIQUE` rows; constraint names synthesised (`<table>_pkey`, `<table>_fk_<id>`) |
 | `information_schema.key_column_usage` | One row per column in a PK or FK |
 | `information_schema.referential_constraints` | FK metadata: `update_rule`, `delete_rule` |
 | `information_schema.constraint_column_usage` | Columns referenced by a constraint (parent-side for FKs) |
-| `pg_tables` | `schemaname='public'`, `tablename`, `hasindexes`; owner/tablespace are NULL |
-| `pg_views` | `schemaname='public'`, `viewname`, `definition` (raw `CREATE VIEW` text) |
-| `pg_indexes` | `schemaname='public'`, `tablename`, `indexname`, `indexdef` (raw `CREATE INDEX` text) |
+| `pg_tables` | `schemaname`, `tablename`, `hasindexes`; owner/tablespace are NULL |
+| `pg_views` | `schemaname`, `viewname`, `definition` (raw `CREATE VIEW` text) |
+| `pg_indexes` | `schemaname`, `tablename`, `indexname`, `indexdef` (raw `CREATE INDEX` text; PK indexes synthesised as `<table>_pkey` in PG's shape) |
 | `pg_index_columns` | pglike-specific: index columns flat — `indexname`, `column_name`, `ordinal_position`, `is_unique` |
 
 Example — list tables and find the FK columns of a table:
@@ -187,6 +188,22 @@ db.Query(`SELECT kcu.column_name, ccu.table_name, ccu.column_name
 ```
 
 The same queries run against real Postgres without modification.
+
+## Schemas
+
+`CREATE SCHEMA`, `DROP SCHEMA [CASCADE]` and schema-qualified names work. Everything stays in one SQLite database: a relation in schema `crm` is stored as the table `"crm.customers"`, and `public.t` is plain `t`. Cross-schema joins, foreign keys, views and transactions therefore behave as they do within one schema.
+
+```sql
+CREATE SCHEMA crm;
+CREATE TABLE crm.customers (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE sales.orders (id INTEGER PRIMARY KEY,
+                           customer_id INTEGER REFERENCES crm.customers(id));
+SELECT customers.name FROM sales.orders o JOIN crm.customers ON customers.id = o.customer_id;
+```
+
+The catalogs report each relation under its schema. The rewrite is syntactic: two-part names are rewritten only where a relation is expected (after `FROM`, `JOIN`, `INTO`, `UPDATE`, `TABLE`, `VIEW`, `INDEX`, `REFERENCES`). `ATTACH DATABASE` was rejected as the mechanism because SQLite can't have foreign keys or permanent views across attached databases.
+
+Not supported: `SET search_path` (unqualified names always mean `public`), schema-qualified sequences and functions, `ALTER ... SET SCHEMA`, `ALTER TABLE crm.t RENAME TO u` (the new name lands in `public`), and dropping `public`. Creating a table in a schema that was never created isn't an error. `DROP SCHEMA ... CASCADE` drops the schema's own tables and views, but it can't remove a foreign key that another schema's table holds into it.
 
 ## WASM Support
 
@@ -220,6 +237,9 @@ go-postgres/
   translate_sequence.go     CREATE/DROP SEQUENCE emulation
   translate_catalog.go      information_schema/pg_catalog reference rewriting
   catalog.go                TEMP VIEW DDLs for information_schema and pg_indexes
+  catalog_types.go          PG column types and schema names for the catalog views
+  translate_schema.go       schema.name → "schema.name" rewriting
+  schema_ddl.go             CREATE/DROP SCHEMA
   pgfuncs.go                PG-compat functions registered in SQLite
   pgerror.go                PG SQLSTATE error code wrapping
   foreign_key_test.go       Foreign key constraint tests

@@ -5,6 +5,9 @@ package pglike
 // pg_indexes) work
 // against the underlying SQLite database.
 //
+// Relations in a non-public schema are stored as "<schema>.<name>" (see
+// translateSchemas); _pglike_nspname/_pglike_relname split them back.
+//
 // Names are mangled to a single SQLite identifier (`_pglike_<schema>_<view>`)
 // because SQLite resolves `<a>.<b>` as `<attached-db>.<table>`, and our
 // catalog views need to read from `main.sqlite_master`. The translator
@@ -19,8 +22,8 @@ var catalogViews = []string{
 	`CREATE TEMP VIEW _pglike_information_schema_tables AS
 	SELECT
 		'main' AS table_catalog,
-		'public' AS table_schema,
-		m.name AS table_name,
+		_pglike_nspname(m.name) AS table_schema,
+		_pglike_relname(m.name) AS table_name,
 		CASE m.type WHEN 'view' THEN 'VIEW' ELSE 'BASE TABLE' END AS table_type
 	FROM sqlite_master m
 	WHERE m.type IN ('table','view')
@@ -34,8 +37,8 @@ var catalogViews = []string{
 	`CREATE TEMP VIEW _pglike_information_schema_columns AS
 	SELECT
 		'main' AS table_catalog,
-		'public' AS table_schema,
-		m.name AS table_name,
+		_pglike_nspname(m.name) AS table_schema,
+		_pglike_relname(m.name) AS table_name,
 		p.name AS column_name,
 		p.cid + 1 AS ordinal_position,
 		p.dflt_value AS column_default,
@@ -54,9 +57,9 @@ var catalogViews = []string{
 	//   FK   → <table>_fk_<id>      (id from pragma_foreign_key_list)
 	//   UNIQ → <pragma_index_list.name>
 	`CREATE TEMP VIEW _pglike_information_schema_table_constraints AS
-	SELECT 'main' AS constraint_catalog, 'public' AS constraint_schema,
-	       m.name || '_pkey' AS constraint_name,
-	       'main' AS table_catalog, 'public' AS table_schema, m.name AS table_name,
+	SELECT 'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
+	       _pglike_relname(m.name) || '_pkey' AS constraint_name,
+	       'main' AS table_catalog, _pglike_nspname(m.name) AS table_schema, _pglike_relname(m.name) AS table_name,
 	       'PRIMARY KEY' AS constraint_type
 	FROM sqlite_master m
 	WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
@@ -64,18 +67,18 @@ var catalogViews = []string{
 	  AND m.name <> '_sequences'
 	  AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) p WHERE p.pk > 0)
 	UNION ALL
-	SELECT 'main', 'public',
-	       m.name || '_fk_' || fk.id,
-	       'main', 'public', m.name,
+	SELECT 'main', _pglike_nspname(m.name),
+	       _pglike_relname(m.name) || '_fk_' || fk.id,
+	       'main', _pglike_nspname(m.name), _pglike_relname(m.name),
 	       'FOREIGN KEY'
 	FROM sqlite_master m, pragma_foreign_key_list(m.name) fk
 	WHERE m.type = 'table' AND fk.seq = 0
 	  AND m.name NOT LIKE 'sqlite_%'
 	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'
 	UNION ALL
-	SELECT 'main', 'public',
+	SELECT 'main', _pglike_nspname(m.name),
 	       il.name,
-	       'main', 'public', m.name,
+	       'main', _pglike_nspname(m.name), _pglike_relname(m.name),
 	       'UNIQUE'
 	FROM sqlite_master m, pragma_index_list(m.name) il
 	WHERE m.type = 'table' AND il."unique" = 1 AND il.origin = 'u'
@@ -85,9 +88,9 @@ var catalogViews = []string{
 	// key_column_usage: one row per column in a PK or FK.
 	// ordinal_position is 1-based within the constraint.
 	`CREATE TEMP VIEW _pglike_information_schema_key_column_usage AS
-	SELECT 'main' AS constraint_catalog, 'public' AS constraint_schema,
-	       m.name || '_pkey' AS constraint_name,
-	       'main' AS table_catalog, 'public' AS table_schema, m.name AS table_name,
+	SELECT 'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
+	       _pglike_relname(m.name) || '_pkey' AS constraint_name,
+	       'main' AS table_catalog, _pglike_nspname(m.name) AS table_schema, _pglike_relname(m.name) AS table_name,
 	       p.name AS column_name,
 	       p.pk AS ordinal_position,
 	       NULL AS position_in_unique_constraint
@@ -97,9 +100,9 @@ var catalogViews = []string{
 	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'
 	  AND m.name <> '_sequences'
 	UNION ALL
-	SELECT 'main', 'public',
-	       m.name || '_fk_' || fk.id,
-	       'main', 'public', m.name,
+	SELECT 'main', _pglike_nspname(m.name),
+	       _pglike_relname(m.name) || '_fk_' || fk.id,
+	       'main', _pglike_nspname(m.name), _pglike_relname(m.name),
 	       fk."from",
 	       fk.seq + 1,
 	       fk.seq + 1
@@ -111,11 +114,11 @@ var catalogViews = []string{
 	// referential_constraints: FK metadata (update/delete rules).
 	// unique_constraint_name points at the parent table's PK by convention.
 	`CREATE TEMP VIEW _pglike_information_schema_referential_constraints AS
-	SELECT 'main' AS constraint_catalog, 'public' AS constraint_schema,
-	       m.name || '_fk_' || fk.id AS constraint_name,
+	SELECT 'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
+	       _pglike_relname(m.name) || '_fk_' || fk.id AS constraint_name,
 	       'main' AS unique_constraint_catalog,
-	       'public' AS unique_constraint_schema,
-	       fk."table" || '_pkey' AS unique_constraint_name,
+	       _pglike_nspname(fk."table") AS unique_constraint_schema,
+	       _pglike_relname(fk."table") || '_pkey' AS unique_constraint_name,
 	       'NONE' AS match_option,
 	       fk.on_update AS update_rule,
 	       fk.on_delete AS delete_rule
@@ -128,18 +131,18 @@ var catalogViews = []string{
 	// For FK rows this points at the parent table's column;
 	// for PK rows this points at the PK columns themselves (matches PG).
 	`CREATE TEMP VIEW _pglike_information_schema_constraint_column_usage AS
-	SELECT 'main' AS table_catalog, 'public' AS table_schema,
-	       fk."table" AS table_name,
+	SELECT 'main' AS table_catalog, _pglike_nspname(fk."table") AS table_schema,
+	       _pglike_relname(fk."table") AS table_name,
 	       fk."to" AS column_name,
-	       'main' AS constraint_catalog, 'public' AS constraint_schema,
-	       m.name || '_fk_' || fk.id AS constraint_name
+	       'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
+	       _pglike_relname(m.name) || '_fk_' || fk.id AS constraint_name
 	FROM sqlite_master m, pragma_foreign_key_list(m.name) fk
 	WHERE m.type = 'table'
 	  AND m.name NOT LIKE 'sqlite_%'
 	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'
 	UNION ALL
-	SELECT 'main', 'public', m.name, p.name,
-	       'main', 'public', m.name || '_pkey'
+	SELECT 'main', _pglike_nspname(m.name), _pglike_relname(m.name), p.name,
+	       'main', _pglike_nspname(m.name), _pglike_relname(m.name) || '_pkey'
 	FROM sqlite_master m, pragma_table_info(m.name) p
 	WHERE m.type = 'table' AND p.pk > 0
 	  AND m.name NOT LIKE 'sqlite_%'
@@ -149,8 +152,8 @@ var catalogViews = []string{
 	// pg_tables: PG's view of tables (not views). Ownership/tablespace
 	// columns are NULL; the boolean flags match PG's defaults.
 	`CREATE TEMP VIEW _pglike_pg_tables AS
-	SELECT 'public' AS schemaname,
-	       m.name AS tablename,
+	SELECT _pglike_nspname(m.name) AS schemaname,
+	       _pglike_relname(m.name) AS tablename,
 	       NULL AS tableowner,
 	       NULL AS tablespace,
 	       EXISTS (SELECT 1 FROM pragma_index_list(m.name)) AS hasindexes,
@@ -165,8 +168,8 @@ var catalogViews = []string{
 
 	// pg_views: PG's view of views, with the original CREATE VIEW text.
 	`CREATE TEMP VIEW _pglike_pg_views AS
-	SELECT 'public' AS schemaname,
-	       m.name AS viewname,
+	SELECT _pglike_nspname(m.name) AS schemaname,
+	       _pglike_relname(m.name) AS viewname,
 	       NULL AS viewowner,
 	       m.sql AS definition
 	FROM sqlite_master m
@@ -180,9 +183,9 @@ var catalogViews = []string{
 	// PG's indexdef shape: SQLite's PK autoindex has no sql, and an INTEGER
 	// PRIMARY KEY has no index at all (it is the rowid).
 	`CREATE TEMP VIEW _pglike_pg_indexes AS
-	SELECT 'public' AS schemaname,
-	       m.tbl_name AS tablename,
-	       m.name AS indexname,
+	SELECT _pglike_nspname(m.tbl_name) AS schemaname,
+	       _pglike_relname(m.tbl_name) AS tablename,
+	       _pglike_relname(m.name) AS indexname,
 	       NULL AS tablespace,
 	       m.sql AS indexdef
 	FROM sqlite_master m
@@ -191,8 +194,8 @@ var catalogViews = []string{
 	  AND m.tbl_name NOT LIKE '\_pglike\_%' ESCAPE '\'
 	  AND m.tbl_name <> '_sequences'
 	UNION ALL
-	SELECT 'public', m.name, m.name || '_pkey', NULL,
-	       'CREATE UNIQUE INDEX ' || m.name || '_pkey ON public.' || m.name ||
+	SELECT _pglike_nspname(m.name), _pglike_relname(m.name), _pglike_relname(m.name) || '_pkey', NULL,
+	       'CREATE UNIQUE INDEX ' || _pglike_relname(m.name) || '_pkey ON ' || _pglike_nspname(m.name) || '.' || _pglike_relname(m.name) ||
 	       ' USING btree (' || group_concat(p.name, ', ' ORDER BY p.pk) || ')'
 	FROM sqlite_master m, pragma_table_info(m.name) p
 	WHERE m.type = 'table' AND p.pk > 0
@@ -201,13 +204,19 @@ var catalogViews = []string{
 	  AND m.name <> '_sequences'
 	GROUP BY m.name`,
 
+	// schemata: public plus schemas created with CREATE SCHEMA.
+	`CREATE TEMP VIEW _pglike_information_schema_schemata AS
+	SELECT 'main' AS catalog_name, 'public' AS schema_name, NULL AS schema_owner
+	UNION ALL
+	SELECT 'main', schema_name, NULL FROM _pglike_schemas`,
+
 	// pg_index_columns: pglike-specific helper exposing index columns
 	// in a flat shape. PG users normally join pg_index/pg_class/pg_attribute;
 	// we expose the same data via pragma_index_info as a TVF.
 	`CREATE TEMP VIEW _pglike_pg_index_columns AS
-	SELECT 'public' AS schemaname,
-	       m.tbl_name AS tablename,
-	       m.name AS indexname,
+	SELECT _pglike_nspname(m.tbl_name) AS schemaname,
+	       _pglike_relname(m.tbl_name) AS tablename,
+	       _pglike_relname(m.name) AS indexname,
 	       ic.name AS column_name,
 	       ic.seqno + 1 AS ordinal_position,
 	       il."unique" AS is_unique

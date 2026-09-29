@@ -15,6 +15,7 @@ var catalogSchemaMap = map[string]map[string]string{
 		"key_column_usage":        "_pglike_information_schema_key_column_usage",
 		"referential_constraints": "_pglike_information_schema_referential_constraints",
 		"constraint_column_usage": "_pglike_information_schema_constraint_column_usage",
+		"schemata":                "_pglike_information_schema_schemata",
 	},
 	"pg_catalog": {
 		"pg_tables":        "_pglike_pg_tables",

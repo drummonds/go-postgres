@@ -108,9 +108,30 @@ func unquoteIdent(s string) string {
 	return s
 }
 
+// splitRelation splits a stored relation name into PG schema and name:
+// "crm.customers" → (crm, customers), "customers" → (public, customers).
+func splitRelation(stored string) (schema, name string) {
+	if s, n, ok := strings.Cut(stored, "."); ok {
+		return s, n
+	}
+	return "public", stored
+}
+
 // registerCatalogFunctions registers the helpers the catalog views use to
-// report PG column types.
+// report schemas and PG column types.
 func registerCatalogFunctions(conn *sqlite3.Conn) error {
+	for fn, part := range map[string]func(string) string{
+		"_pglike_nspname": func(s string) string { n, _ := splitRelation(s); return n },
+		"_pglike_relname": func(s string) string { _, n := splitRelation(s); return n },
+	} {
+		err := conn.CreateFunction(fn, 1, sqlite3.DETERMINISTIC,
+			func(ctx sqlite3.Context, arg ...sqlite3.Value) {
+				ctx.ResultText(part(arg[0].Text()))
+			})
+		if err != nil {
+			return err
+		}
+	}
 	udt := func(arg []sqlite3.Value) string {
 		return pgColumnUDT(arg[0].Text(), arg[1].Text(), arg[2].Text())
 	}

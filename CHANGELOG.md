@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- Schemas: `CREATE SCHEMA [IF NOT EXISTS]`, `DROP SCHEMA [IF EXISTS] ...
+  [CASCADE|RESTRICT]` and schema-qualified names (`crm.customers`,
+  `crm.customers.id`). A relation in a non-public schema is stored as the
+  SQLite table `"crm.customers"` in the same database, so cross-schema joins,
+  foreign keys, views and transactions work. Catalog views report real schema
+  names, and `information_schema.schemata` is added. `search_path` is not
+  supported. (#20)
+
 ### Fixed
 - `pg_indexes` lists primary-key indexes as `<table>_pkey` with PG's
   `indexdef` shape (`CREATE UNIQUE INDEX t_pkey ON public.t USING btree (id)`),

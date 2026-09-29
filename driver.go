@@ -127,6 +127,8 @@ func (d *Driver) openConn(sqliteDSN string) (driver.Conn, error) {
 
 	// Ensure _sequences table exists for sequence emulation.
 	_ = c.execDirect("CREATE TABLE IF NOT EXISTS _sequences (name TEXT PRIMARY KEY, current_value INTEGER NOT NULL DEFAULT 0, increment INTEGER NOT NULL DEFAULT 1)")
+	// ... and _pglike_schemas for CREATE/DROP SCHEMA.
+	_ = c.execDirect("CREATE TABLE IF NOT EXISTS " + schemasTable + " (schema_name TEXT PRIMARY KEY)")
 
 	// Install PG-compatible catalog views (information_schema.*, pg_indexes).
 	if err := installCatalogViews(c); err != nil {
@@ -290,6 +292,9 @@ func extractSeqName(s string, pos int) (string, int, bool) {
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
+	if d, ok := parseSchemaDDL(Tokenize(query)); ok {
+		return &schemaStmt{c: c, ddl: d}, nil
+	}
 	translated, err := Translate(query)
 	if err != nil {
 		return nil, err

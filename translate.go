@@ -367,6 +367,7 @@ func Reassemble(tokens []Token) string {
 func translateTokens(tokens []Token) []Token {
 	tokens = translateExplain(tokens)
 	tokens = translateCatalog(tokens)
+	tokens = translateSchemas(tokens)
 	tokens = translateGenerateSeries(tokens)
 	tokens = translateSequenceDDL(tokens)
 	tokens = translateInterval(tokens)
@@ -389,6 +390,7 @@ func Translate(sql string) (string, error) {
 type translatedStmt struct {
 	SQL       string
 	NumParams int
+	schema    *schemaDDL // CREATE/DROP SCHEMA, executed by the driver instead of SQL
 }
 
 // TranslateMulti translates a potentially multi-statement SQL string,
@@ -398,6 +400,10 @@ func TranslateMulti(sql string) ([]translatedStmt, error) {
 	stmts := splitStatements(tokens)
 	result := make([]translatedStmt, 0, len(stmts))
 	for _, stmtTokens := range stmts {
+		if d, ok := parseSchemaDDL(stmtTokens); ok {
+			result = append(result, translatedStmt{schema: d})
+			continue
+		}
 		nParams := countTokenParams(stmtTokens)
 		stmtTokens = translateTokens(stmtTokens)
 		result = append(result, translatedStmt{
