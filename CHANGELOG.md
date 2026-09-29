@@ -6,6 +6,14 @@
 - `pg_indexes` lists primary-key indexes as `<table>_pkey` with PG's
   `indexdef` shape (`CREATE UNIQUE INDEX t_pkey ON public.t USING btree (id)`),
   including INTEGER PRIMARY KEY tables that have no SQLite index. (#18)
+- `information_schema.columns.data_type` / `udt_name` report the PG type as
+  declared (`bigint`/`int8`, `timestamp with time zone`/`timestamptz`,
+  `character varying`/`varchar`, ...) instead of the SQLite type it was
+  translated to. The DDL translator now leaves a `/*pg:<udt>*/` comment after
+  each rewritten column type in CREATE/ALTER TABLE; SQLite keeps it in
+  `sqlite_master.sql` without affecting column affinity. Tables created by
+  earlier versions report the SQLite type mapped to its PG name (`integer`,
+  `text`, `real`, `bytea`). (#19)
 
 ## [0.5.13] - 2026-09-02
 

@@ -97,10 +97,10 @@ func TestCatalogColumns(t *testing.T) {
 		got = append(got, c)
 	}
 	want := []col{
-		{"id", "INTEGER", "NO", 1},
-		{"author_id", "INTEGER", "NO", 2},
-		{"title", "TEXT", "NO", 3},
-		{"body", "TEXT", "YES", 4},
+		{"id", "integer", "NO", 1},
+		{"author_id", "integer", "NO", 2},
+		{"title", "text", "NO", 3},
+		{"body", "text", "YES", 4},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d cols, want %d: %+v", len(got), len(want), got)
@@ -109,6 +109,82 @@ func TestCatalogColumns(t *testing.T) {
 		if got[i] != w {
 			t.Errorf("col[%d] = %+v, want %+v", i, got[i], w)
 		}
+	}
+}
+
+// data_type and udt_name report the PG type as declared, not the SQLite type
+// the DDL translator rewrote it to (#19).
+func TestCatalogColumnPGTypes(t *testing.T) {
+	db := openTestDB(t)
+	for _, s := range []string{
+		`CREATE TABLE typed (
+			a BIGINT, b INTEGER, c INT, d SMALLINT, e TEXT,
+			f VARCHAR(100), g CHARACTER VARYING(20), h CHAR(3), i BOOLEAN,
+			j TIMESTAMPTZ, k TIMESTAMP WITH TIME ZONE, l TIMESTAMP, m DATE,
+			n UUID, o NUMERIC(10,2), p DOUBLE PRECISION, q REAL, r BYTEA,
+			s JSONB, t INTERVAL, "Mixed Case" VARCHAR(5)
+		)`,
+		`ALTER TABLE typed ADD COLUMN added TIMESTAMPTZ DEFAULT now()`,
+		`CREATE TABLE serials (id BIGSERIAL PRIMARY KEY)`,
+		`CREATE TABLE serials4 (id SERIAL PRIMARY KEY)`,
+	} {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("setup: %s\n%v", s, err)
+		}
+	}
+
+	want := map[string][2]string{
+		"typed.a":          {"bigint", "int8"},
+		"typed.b":          {"integer", "int4"},
+		"typed.c":          {"integer", "int4"},
+		"typed.d":          {"smallint", "int2"},
+		"typed.e":          {"text", "text"},
+		"typed.f":          {"character varying", "varchar"},
+		"typed.g":          {"character varying", "varchar"},
+		"typed.h":          {"character", "bpchar"},
+		"typed.i":          {"boolean", "bool"},
+		"typed.j":          {"timestamp with time zone", "timestamptz"},
+		"typed.k":          {"timestamp with time zone", "timestamptz"},
+		"typed.l":          {"timestamp without time zone", "timestamp"},
+		"typed.m":          {"date", "date"},
+		"typed.n":          {"uuid", "uuid"},
+		"typed.o":          {"numeric", "numeric"},
+		"typed.p":          {"double precision", "float8"},
+		"typed.q":          {"real", "float4"},
+		"typed.r":          {"bytea", "bytea"},
+		"typed.s":          {"jsonb", "jsonb"},
+		"typed.t":          {"interval", "interval"},
+		"typed.Mixed Case": {"character varying", "varchar"},
+		"typed.added":      {"timestamp with time zone", "timestamptz"},
+		"serials.id":       {"bigint", "int8"},
+		"serials4.id":      {"integer", "int4"},
+	}
+	rows, err := db.Query(`SELECT table_name, column_name, data_type, udt_name
+		FROM information_schema.columns
+		WHERE table_name IN ('typed', 'serials', 'serials4')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	seen := 0
+	for rows.Next() {
+		var tbl, col, dt, udt string
+		if err := rows.Scan(&tbl, &col, &dt, &udt); err != nil {
+			t.Fatal(err)
+		}
+		key := tbl + "." + col
+		w, ok := want[key]
+		if !ok {
+			t.Errorf("unexpected column %s", key)
+			continue
+		}
+		seen++
+		if dt != w[0] || udt != w[1] {
+			t.Errorf("%s = (%q, %q), want (%q, %q)", key, dt, udt, w[0], w[1])
+		}
+	}
+	if seen != len(want) {
+		t.Errorf("saw %d columns, want %d", seen, len(want))
 	}
 }
 

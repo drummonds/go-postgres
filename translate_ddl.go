@@ -4,8 +4,9 @@ import "strings"
 
 // translateDDL handles DDL-specific translations: type mappings, SERIAL, etc.
 func translateDDL(tokens []Token) []Token {
-	tokens = translateTypes(tokens)
-	tokens = translateSerial(tokens)
+	annotate := isTableDDL(tokens)
+	tokens = translateTypes(tokens, annotate)
+	tokens = translateSerial(tokens, annotate)
 	tokens = translateDefaultNow(tokens)
 	tokens = translateAlterTableAddColumn(tokens)
 	return tokens
@@ -74,13 +75,13 @@ func isAfterAddColumn(tokens []Token) bool {
 // It detects "colname SERIAL ... [PRIMARY KEY]" and normalizes to
 // "colname INTEGER PRIMARY KEY AUTOINCREMENT ...", stripping any PRIMARY KEY
 // (and preceding CONSTRAINT name) that appears later in the column definition.
-func translateSerial(tokens []Token) []Token {
+func translateSerial(tokens []Token, annotate bool) []Token {
 	var out []Token
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if t.Kind == TokKeyword && (t.Value == "SERIAL" || t.Value == "BIGSERIAL" || t.Value == "SMALLSERIAL") {
+		if udt, ok := serialUDT[t.Value]; ok && t.Kind == TokKeyword {
 			// Replace with INTEGER PRIMARY KEY AUTOINCREMENT
-			out = append(out, Token{Kind: TokKeyword, Value: "INTEGER", Raw: "INTEGER"})
+			out = append(out, sqliteType("INTEGER", udt, annotate)...)
 			out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
 			out = append(out, Token{Kind: TokKeyword, Value: "PRIMARY", Raw: "PRIMARY"})
 			out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
@@ -196,7 +197,12 @@ func MapType(pgType string) string {
 
 // translateTypes handles PG type names in DDL, replacing them with SQLite equivalents.
 // Handles multi-word types like "DOUBLE PRECISION", "CHARACTER VARYING", "TIMESTAMP WITH TIME ZONE".
-func translateTypes(tokens []Token) []Token {
+//
+// When annotate is set (CREATE/ALTER TABLE), each rewritten type is followed
+// by a /*pg:<udt_name>*/ comment. SQLite keeps it in sqlite_master.sql but
+// not in the declared type, so the catalog views can report the PG type
+// (see pgColumnUDT) without changing column affinity.
+func translateTypes(tokens []Token, annotate bool) []Token {
 	var out []Token
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
@@ -210,7 +216,7 @@ func translateTypes(tokens []Token) []Token {
 		case "DOUBLE":
 			// DOUBLE PRECISION -> REAL
 			if j, ok := peekKeyword(tokens, i+1, "PRECISION"); ok {
-				out = append(out, Token{Kind: TokKeyword, Value: "REAL", Raw: "REAL"})
+				out = append(out, sqliteType("REAL", "float8", annotate)...)
 				i = j
 				continue
 			}
@@ -224,25 +230,25 @@ func translateTypes(tokens []Token) []Token {
 			}
 			if j < len(tokens) && tokens[j].Kind == TokKeyword && tokens[j].Value == "VARYING" {
 				// CHARACTER VARYING -> TEXT, skip (n)
-				out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+				out = append(out, sqliteType("TEXT", "varchar", annotate)...)
 				i = j
 				i = skipParenGroup(tokens, i+1)
 				continue
 			}
 			// CHARACTER(n) -> TEXT
-			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			out = append(out, sqliteType("TEXT", "bpchar", annotate)...)
 			i = skipParenGroup(tokens, i+1)
 			continue
 
 		case "VARCHAR", "CHAR":
 			// VARCHAR(n) -> TEXT, skip (n)
-			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			out = append(out, sqliteType("TEXT", pgUDT[t.Value], annotate)...)
 			i = skipParenGroup(tokens, i+1)
 			continue
 
 		case "NUMERIC", "DECIMAL":
 			// NUMERIC(p,s) -> TEXT (preserves arbitrary precision)
-			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			out = append(out, sqliteType("TEXT", "numeric", annotate)...)
 			i = skipParenGroup(tokens, i+1)
 			continue
 
@@ -263,18 +269,22 @@ func translateTypes(tokens []Token) []Token {
 						l++
 					}
 					if l < len(tokens) && tokens[l].Kind == TokKeyword && tokens[l].Value == "ZONE" {
-						out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+						udt := "timestamp"
+						if tokens[j].Value == "WITH" {
+							udt = "timestamptz"
+						}
+						out = append(out, sqliteType("TEXT", udt, annotate)...)
 						i = l
 						continue
 					}
 				}
 			}
-			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			out = append(out, sqliteType("TEXT", "timestamp", annotate)...)
 			continue
 
 		case "INTERVAL":
 			// INTERVAL -> TEXT (column type only; arithmetic INTERVAL handled by translateInterval)
-			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			out = append(out, sqliteType("TEXT", "interval", annotate)...)
 			continue
 
 		case "TIME":
@@ -294,24 +304,85 @@ func translateTypes(tokens []Token) []Token {
 						l++
 					}
 					if l < len(tokens) && tokens[l].Kind == TokKeyword && tokens[l].Value == "ZONE" {
-						out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+						udt := "time"
+						if tokens[j].Value == "WITH" {
+							udt = "timetz"
+						}
+						out = append(out, sqliteType("TEXT", udt, annotate)...)
 						i = l
 						continue
 					}
 				}
 			}
-			out = append(out, Token{Kind: TokKeyword, Value: "TEXT", Raw: "TEXT"})
+			out = append(out, sqliteType("TEXT", "time", annotate)...)
 			continue
 
 		default:
 			if mapped, ok := pgTypeToSQLite[t.Value]; ok {
-				out = append(out, Token{Kind: TokKeyword, Value: mapped, Raw: mapped})
+				out = append(out, sqliteType(mapped, pgUDT[t.Value], annotate)...)
 			} else {
 				out = append(out, t)
 			}
 		}
 	}
 	return out
+}
+
+// pgUDT maps PG type keywords to PG's internal type name, as reported in
+// information_schema.columns.udt_name. Multi-word spellings (DOUBLE
+// PRECISION, CHARACTER VARYING, TIMESTAMP WITH TIME ZONE) are resolved in
+// translateTypes.
+var pgUDT = map[string]string{
+	"BOOLEAN": "bool", "BOOL": "bool",
+	"VARCHAR": "varchar", "CHAR": "bpchar",
+	"TIMESTAMPTZ": "timestamptz", "DATE": "date", "TIMETZ": "timetz",
+	"UUID": "uuid", "BYTEA": "bytea", "JSON": "json", "JSONB": "jsonb",
+	"SMALLINT": "int2", "INT2": "int2", "INT4": "int4", "INT8": "int8", "BIGINT": "int8",
+	"FLOAT4": "float4", "FLOAT8": "float8",
+}
+
+var serialUDT = map[string]string{"SERIAL": "int4", "BIGSERIAL": "int8", "SMALLSERIAL": "int2"}
+
+// sqliteType returns the tokens for a translated column type, followed by a
+// /*pg:<udt>*/ annotation when annotate is set.
+func sqliteType(sqlite, udt string, annotate bool) []Token {
+	toks := []Token{{Kind: TokKeyword, Value: sqlite, Raw: sqlite}}
+	if annotate && udt != "" {
+		c := pgTypeCommentPrefix + udt + "*/"
+		toks = append(toks, Token{Kind: TokComment, Value: c, Raw: c})
+	}
+	return toks
+}
+
+const pgTypeCommentPrefix = "/*pg:"
+
+// isTableDDL reports whether the statement is CREATE [TEMP] TABLE or
+// ALTER TABLE, the statements whose column types the catalogs report.
+func isTableDDL(tokens []Token) bool {
+	var kw []string
+	for _, t := range tokens {
+		if t.Kind == TokWhitespace || t.Kind == TokComment {
+			continue
+		}
+		if t.Kind != TokKeyword && t.Kind != TokIdent {
+			break
+		}
+		kw = append(kw, strings.ToUpper(t.Value))
+		if len(kw) == 3 {
+			break
+		}
+	}
+	if len(kw) < 2 || (kw[0] != "CREATE" && kw[0] != "ALTER") {
+		return false
+	}
+	if kw[1] == "TABLE" {
+		return true
+	}
+	switch kw[1] {
+	case "TEMP", "TEMPORARY", "UNLOGGED":
+		return len(kw) == 3 && kw[2] == "TABLE"
+	}
+	return false
 }
 
 // peekKeyword looks past whitespace for an expected keyword, returning the index and true if found.

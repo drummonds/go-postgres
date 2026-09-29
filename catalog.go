@@ -30,6 +30,7 @@ var catalogViews = []string{
 
 	// Columns: pragma_table_info as a TVF correlated against sqlite_master.
 	// is_nullable matches PG's 'YES'/'NO'. ordinal_position is 1-based.
+	// data_type/udt_name are the PG type as declared (see pgColumnUDT).
 	`CREATE TEMP VIEW _pglike_information_schema_columns AS
 	SELECT
 		'main' AS table_catalog,
@@ -39,8 +40,8 @@ var catalogViews = []string{
 		p.cid + 1 AS ordinal_position,
 		p.dflt_value AS column_default,
 		CASE WHEN p.pk > 0 OR p."notnull" <> 0 THEN 'NO' ELSE 'YES' END AS is_nullable,
-		p.type AS data_type,
-		p.type AS udt_name
+		_pglike_data_type(m.sql, p.name, p.type) AS data_type,
+		_pglike_udt_name(m.sql, p.name, p.type) AS udt_name
 	FROM sqlite_master m, pragma_table_info(m.name) p
 	WHERE m.type = 'table'
 	  AND m.name NOT LIKE 'sqlite_%'

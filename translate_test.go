@@ -13,122 +13,122 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "SERIAL PRIMARY KEY",
 			input: "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT)",
-			want:  "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)",
+			want:  "CREATE TABLE users (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT, name TEXT)",
 		},
 		{
 			name:  "SERIAL without PRIMARY KEY",
 			input: "CREATE TABLE users (id SERIAL, name TEXT)",
-			want:  "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)",
+			want:  "CREATE TABLE users (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT, name TEXT)",
 		},
 		{
 			name:  "BIGSERIAL",
 			input: "CREATE TABLE t (id BIGSERIAL PRIMARY KEY)",
-			want:  "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT)",
+			want:  "CREATE TABLE t (id INTEGER/*pg:int8*/ PRIMARY KEY AUTOINCREMENT)",
 		},
 		{
 			name:  "SERIAL NOT NULL PRIMARY KEY",
 			input: "CREATE TABLE t (id SERIAL NOT NULL PRIMARY KEY, name TEXT)",
-			want:  "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT)",
+			want:  "CREATE TABLE t (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT)",
 		},
 		{
 			name:  "SERIAL UNIQUE PRIMARY KEY",
 			input: "CREATE TABLE t (id SERIAL UNIQUE PRIMARY KEY, name TEXT)",
-			want:  "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, name TEXT)",
+			want:  "CREATE TABLE t (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT UNIQUE, name TEXT)",
 		},
 		{
 			name:  "SERIAL CONSTRAINT pk PRIMARY KEY",
 			input: "CREATE TABLE t (id SERIAL CONSTRAINT pk PRIMARY KEY)",
-			want:  "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT)",
+			want:  "CREATE TABLE t (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT)",
 		},
 		{
 			name:  "SMALLSERIAL NOT NULL PRIMARY KEY",
 			input: "CREATE TABLE t (id SMALLSERIAL NOT NULL PRIMARY KEY)",
-			want:  "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)",
+			want:  "CREATE TABLE t (id INTEGER/*pg:int2*/ PRIMARY KEY AUTOINCREMENT NOT NULL)",
 		},
 		{
 			name:  "VARCHAR(n) to TEXT",
 			input: "CREATE TABLE t (name VARCHAR(100))",
-			want:  "CREATE TABLE t (name TEXT)",
+			want:  "CREATE TABLE t (name TEXT/*pg:varchar*/)",
 		},
 		{
 			name:  "CHARACTER VARYING(n) to TEXT",
 			input: "CREATE TABLE t (name CHARACTER VARYING(255))",
-			want:  "CREATE TABLE t (name TEXT)",
+			want:  "CREATE TABLE t (name TEXT/*pg:varchar*/)",
 		},
 		{
 			name:  "BOOLEAN to INTEGER",
 			input: "CREATE TABLE t (active BOOLEAN)",
-			want:  "CREATE TABLE t (active INTEGER)",
+			want:  "CREATE TABLE t (active INTEGER/*pg:bool*/)",
 		},
 		{
 			name:  "TIMESTAMP WITH TIME ZONE",
 			input: "CREATE TABLE t (created_at TIMESTAMP WITH TIME ZONE)",
-			want:  "CREATE TABLE t (created_at TEXT)",
+			want:  "CREATE TABLE t (created_at TEXT/*pg:timestamptz*/)",
 		},
 		{
 			name:  "TIMESTAMPTZ",
 			input: "CREATE TABLE t (ts TIMESTAMPTZ)",
-			want:  "CREATE TABLE t (ts TEXT)",
+			want:  "CREATE TABLE t (ts TEXT/*pg:timestamptz*/)",
 		},
 		{
 			name:  "UUID",
 			input: "CREATE TABLE t (id UUID)",
-			want:  "CREATE TABLE t (id TEXT)",
+			want:  "CREATE TABLE t (id TEXT/*pg:uuid*/)",
 		},
 		{
 			name:  "BYTEA",
 			input: "CREATE TABLE t (data BYTEA)",
-			want:  "CREATE TABLE t (data BLOB)",
+			want:  "CREATE TABLE t (data BLOB/*pg:bytea*/)",
 		},
 		{
 			name:  "JSONB",
 			input: "CREATE TABLE t (meta JSONB)",
-			want:  "CREATE TABLE t (meta TEXT)",
+			want:  "CREATE TABLE t (meta TEXT/*pg:jsonb*/)",
 		},
 		{
 			name:  "DOUBLE PRECISION",
 			input: "CREATE TABLE t (val DOUBLE PRECISION)",
-			want:  "CREATE TABLE t (val REAL)",
+			want:  "CREATE TABLE t (val REAL/*pg:float8*/)",
 		},
 		{
 			name:  "NUMERIC(10,2)",
 			input: "CREATE TABLE t (price NUMERIC(10,2))",
-			want:  "CREATE TABLE t (price TEXT)",
+			want:  "CREATE TABLE t (price TEXT/*pg:numeric*/)",
 		},
 		{
 			name:  "SMALLINT",
 			input: "CREATE TABLE t (n SMALLINT)",
-			want:  "CREATE TABLE t (n INTEGER)",
+			want:  "CREATE TABLE t (n INTEGER/*pg:int2*/)",
 		},
 		{
 			name:  "BIGINT",
 			input: "CREATE TABLE t (n BIGINT)",
-			want:  "CREATE TABLE t (n INTEGER)",
+			want:  "CREATE TABLE t (n INTEGER/*pg:int8*/)",
 		},
 		{
 			name:  "DEFAULT NOW()",
 			input: "CREATE TABLE t (created_at TIMESTAMP DEFAULT NOW())",
-			want:  "CREATE TABLE t (created_at TEXT DEFAULT (datetime('now')))",
+			want:  "CREATE TABLE t (created_at TEXT/*pg:timestamp*/ DEFAULT (datetime('now')))",
 		},
 		{
 			name:  "DEFAULT CURRENT_TIMESTAMP",
 			input: "CREATE TABLE t (created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-			want:  "CREATE TABLE t (created_at TEXT DEFAULT (datetime('now')))",
+			want:  "CREATE TABLE t (created_at TEXT/*pg:timestamp*/ DEFAULT (datetime('now')))",
 		},
 		{
 			name:  "DEFAULT CURRENT_DATE",
 			input: "CREATE TABLE t (created_at DATE DEFAULT CURRENT_DATE)",
-			want:  "CREATE TABLE t (created_at TEXT DEFAULT (date('now')))",
+			want:  "CREATE TABLE t (created_at TEXT/*pg:date*/ DEFAULT (date('now')))",
 		},
 		{
 			name:  "DEFAULT CURRENT_TIME",
 			input: "CREATE TABLE t (created_at TIME DEFAULT CURRENT_TIME)",
-			want:  "CREATE TABLE t (created_at TEXT DEFAULT (time('now')))",
+			want:  "CREATE TABLE t (created_at TEXT/*pg:time*/ DEFAULT (time('now')))",
 		},
 		{
 			name:  "DEFAULT gen_random_uuid()",
 			input: "CREATE TABLE t (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ts TIMESTAMP NOT NULL)",
-			want:  "CREATE TABLE t (id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()), ts TEXT NOT NULL)",
+			want:  "CREATE TABLE t (id TEXT/*pg:uuid*/ PRIMARY KEY DEFAULT (gen_random_uuid()), ts TEXT/*pg:timestamp*/ NOT NULL)",
 		},
 		{
 			name:  "DEFAULT function call with arguments",
@@ -138,7 +138,7 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "DEFAULT already parenthesised is left alone",
 			input: "CREATE TABLE t (id UUID PRIMARY KEY DEFAULT (gen_random_uuid()))",
-			want:  "CREATE TABLE t (id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()))",
+			want:  "CREATE TABLE t (id TEXT/*pg:uuid*/ PRIMARY KEY DEFAULT (gen_random_uuid()))",
 		},
 		{
 			name:  "DEFAULT literal is left alone",
@@ -148,7 +148,7 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "complex table",
 			input: "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, email VARCHAR(255) UNIQUE, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW())",
-			want:  "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')))",
+			want:  "CREATE TABLE users (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT, name TEXT/*pg:varchar*/ NOT NULL, email TEXT/*pg:varchar*/ UNIQUE, active INTEGER/*pg:bool*/ DEFAULT 1, created_at TEXT/*pg:timestamp*/ DEFAULT (datetime('now')))",
 		},
 		{
 			name:  "ALTER TABLE ADD COLUMN IF NOT EXISTS",
@@ -859,8 +859,8 @@ func TestTranslateMulti(t *testing.T) {
 			input:     "CREATE TABLE a (id SERIAL PRIMARY KEY); CREATE TABLE b (id UUID)",
 			wantCount: 2,
 			wantSQL: []string{
-				"CREATE TABLE a (id INTEGER PRIMARY KEY AUTOINCREMENT)",
-				" CREATE TABLE b (id TEXT)",
+				"CREATE TABLE a (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT)",
+				" CREATE TABLE b (id TEXT/*pg:uuid*/)",
 			},
 		},
 		{

@@ -194,7 +194,7 @@ func registerPGFunctions(conn *sqlite3.Conn) error {
 		return err
 	}
 
-	return nil
+	return registerCatalogFunctions(conn)
 }
 
 // parseDateTime parses a datetime string in common SQLite/ISO formats.
