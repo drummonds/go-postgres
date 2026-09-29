@@ -24,9 +24,10 @@ name
 CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);
 CREATE INDEX idx_users_name ON users (name);
 -- query:
-SELECT indexname FROM pg_indexes WHERE tablename = 'users'
+SELECT indexname FROM pg_indexes WHERE tablename = 'users' ORDER BY indexname
 -- expect:
 idx_users_name
+users_pkey
 
 -- case: pg_tables lists tables but not views
 -- setup:

@@ -187,7 +187,7 @@ func TestCatalogIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := collectStrings(t, rows)
-	want := []string{"idx_posts_author", "idx_posts_title_body"}
+	want := []string{"idx_posts_author", "idx_posts_title_body", "posts_pkey"}
 	if !equalSlices(got, want) {
 		t.Errorf("posts indexes = %v, want %v", got, want)
 	}
@@ -202,6 +202,41 @@ func TestCatalogIndexes(t *testing.T) {
 	want = []string{"title", "body"}
 	if !equalSlices(got, want) {
 		t.Errorf("idx_posts_title_body cols = %v, want %v", got, want)
+	}
+}
+
+// PK indexes are listed as <table>_pkey with PG's indexdef shape, whether
+// SQLite backs the PK with an autoindex (composite) or the rowid (INTEGER
+// PRIMARY KEY, no autoindex at all).
+func TestCatalogIndexesPrimaryKey(t *testing.T) {
+	db := catalogFixture(t)
+	cases := []struct{ table, def string }{
+		{"posts", "CREATE UNIQUE INDEX posts_pkey ON public.posts USING btree (id)"},
+		{"tags", "CREATE UNIQUE INDEX tags_pkey ON public.tags USING btree (post_id, tag)"},
+	}
+	for _, c := range cases {
+		var def string
+		err := db.QueryRow(`SELECT indexdef FROM pg_indexes
+			WHERE schemaname = 'public' AND tablename = $1 AND indexname = $2`,
+			c.table, c.table+"_pkey").Scan(&def)
+		if err != nil {
+			t.Fatalf("%s_pkey: %v", c.table, err)
+		}
+		if def != c.def {
+			t.Errorf("%s_pkey indexdef = %q, want %q", c.table, def, c.def)
+		}
+	}
+
+	// A table without a PK gets no _pkey row.
+	if _, err := db.Exec(`CREATE TABLE nopk (a TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE tablename = 'nopk'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("nopk has %d index rows, want 0", n)
 	}
 }
 

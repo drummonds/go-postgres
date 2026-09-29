@@ -175,6 +175,9 @@ var catalogViews = []string{
 
 	// pg_indexes: PG's view listing indexes with their DDL.
 	// SQLite stores the original CREATE INDEX text in sqlite_master.sql.
+	// PK indexes are synthesised from pragma_table_info as <table>_pkey in
+	// PG's indexdef shape: SQLite's PK autoindex has no sql, and an INTEGER
+	// PRIMARY KEY has no index at all (it is the rowid).
 	`CREATE TEMP VIEW _pglike_pg_indexes AS
 	SELECT 'public' AS schemaname,
 	       m.tbl_name AS tablename,
@@ -185,7 +188,17 @@ var catalogViews = []string{
 	WHERE m.type = 'index'
 	  AND m.name NOT LIKE 'sqlite_%'
 	  AND m.tbl_name NOT LIKE '\_pglike\_%' ESCAPE '\'
-	  AND m.tbl_name <> '_sequences'`,
+	  AND m.tbl_name <> '_sequences'
+	UNION ALL
+	SELECT 'public', m.name, m.name || '_pkey', NULL,
+	       'CREATE UNIQUE INDEX ' || m.name || '_pkey ON public.' || m.name ||
+	       ' USING btree (' || group_concat(p.name, ', ' ORDER BY p.pk) || ')'
+	FROM sqlite_master m, pragma_table_info(m.name) p
+	WHERE m.type = 'table' AND p.pk > 0
+	  AND m.name NOT LIKE 'sqlite_%'
+	  AND m.name NOT LIKE '\_pglike\_%' ESCAPE '\'
+	  AND m.name <> '_sequences'
+	GROUP BY m.name`,
 
 	// pg_index_columns: pglike-specific helper exposing index columns
 	// in a flat shape. PG users normally join pg_index/pg_class/pg_attribute;

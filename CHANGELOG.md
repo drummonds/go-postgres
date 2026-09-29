@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- `pg_indexes` lists primary-key indexes as `<table>_pkey` with PG's
+  `indexdef` shape (`CREATE UNIQUE INDEX t_pkey ON public.t USING btree (id)`),
+  including INTEGER PRIMARY KEY tables that have no SQLite index. (#18)
+
 ## [0.5.13] - 2026-09-02
 
  - Add pg_tables/pg_views catalog views; numbered parameters so a reused $N binds once
