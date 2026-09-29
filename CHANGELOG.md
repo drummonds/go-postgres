@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-29
+
+ - Adding metadata
+
 ### Added
 - Schemas: `CREATE SCHEMA [IF NOT EXISTS]`, `DROP SCHEMA [IF EXISTS] ...
   [CASCADE|RESTRICT]` and schema-qualified names (`crm.customers`,
