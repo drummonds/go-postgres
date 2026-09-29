@@ -241,3 +241,29 @@ go-postgres/
 ## License
 
 MIT
+
+## Alternatives survey (checked 2026-09-29)
+
+Other ways to get PostgreSQL SQL in pure Go or WASM. All of the real-Postgres options run [PGlite](https://pglite.dev)'s WASM build of Postgres.
+
+| Project | Engine / runtime | Pure Go | Browser (`GOOS=js`) | Maturity |
+|---|---|---|---|---|
+| **pglike** (this repo) | PG→SQLite translation on ncruces/go-sqlite3 (wasm2go) | Yes | Yes, and `wasip1` | In use |
+| [pglite-go](https://github.com/moriyoshi/pglite-go) | Real PG 18. wasmtime (cgo), wazero, or `-tags aot` (wasm2go → ~14M lines of generated Go, no WASM runtime) | wazero and `aot` builds | Not claimed. `aot` is the only plausible route | 8 stars. Single connection. `aot` merged 2026-09-25, can't create a new cluster, not in CI |
+| [wasipg](https://github.com/moznion/wasipg) | Real PG 17.5 on wazero | Yes | No (WASI only) | Pre-alpha, no release |
+| [gopglite](https://pkg.go.dev/github.com/bobTheBuilder7/gopglite) | Real PG 16 on wazero | Yes | Not claimed | Small |
+| [PGlite](https://pglite.dev) via `syscall/js` | Real PG in the browser's JS engine | No (JS dependency) | Yes, ~3 MB gzipped | Mature |
+
+Running wazero inside `GOOS=js` puts a WASM interpreter inside WASM, so the wazero-based options aren't a practical browser route. Re-check pglite-go `aot` for browser use.
+
+### Cost of pglike in a WASM binary
+
+Measured with Go 1.26.4 and go-sqlite3 v0.35.3, built with `-trimpath -ldflags="-s -w"`. The test program opens `:memory:` and runs `SELECT 1`.
+
+| Build (`GOOS=js`) | Raw | gzip -9 |
+|---|---|---|
+| Baseline (`database/sql` + `fmt`) | 2.5 MB | 0.7 MB |
+| + ncruces/go-sqlite3 only | 16.5 MB | 4.5 MB |
+| + pglike (includes SQLite) | 17.6 MB | 4.7 MB |
+
+SQLite adds ~14 MB raw (~3.8 MB gzipped). pglike's translation layer on top of that adds ~1.1 MB (~0.2 MB gzipped). `wasip1` sizes are within 0.1 MB of these.
