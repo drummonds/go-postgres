@@ -23,6 +23,7 @@
   `sqlite_master.sql` without affecting column affinity. Tables created by
   earlier versions report the SQLite type mapped to its PG name (`integer`,
   `text`, `real`, `bytea`). (#19)
+- `information_schema.columns` includes view columns, as in PostgreSQL.
 
 ## [0.5.13] - 2026-09-02
 

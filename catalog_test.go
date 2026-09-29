@@ -112,6 +112,22 @@ func TestCatalogColumns(t *testing.T) {
 	}
 }
 
+// View columns are listed too, as in PG.
+func TestCatalogViewColumns(t *testing.T) {
+	db := catalogFixture(t)
+	if _, err := db.Exec(`CREATE VIEW post_titles AS SELECT p.id, p.title, u.email FROM posts p JOIN users u ON u.id = p.author_id`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Query(`SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'post_titles' ORDER BY ordinal_position`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := collectStrings(t, rows), []string{"id", "title", "email"}; !equalSlices(got, want) {
+		t.Errorf("view columns = %v, want %v", got, want)
+	}
+}
+
 // data_type and udt_name report the PG type as declared, not the SQLite type
 // the DDL translator rewrote it to (#19).
 func TestCatalogColumnPGTypes(t *testing.T) {
