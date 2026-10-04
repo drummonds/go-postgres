@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-04
+
+ - Updating numeric research
+
 ### Added
 - Research study `research-numeric-views.md`: whether a ledger that stores
   BIGINT amounts at exponent −7 can publish NUMERIC(…,7) balances through a
