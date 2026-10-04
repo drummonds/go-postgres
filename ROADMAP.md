@@ -15,7 +15,7 @@
 
 ## Research: NUMERIC balance views
 
-- [ ] **Is an integer+exponent ledger with a NUMERIC(…,7) balance view practical
+- [x] **Is an integer+exponent ledger with a NUMERIC(…,7) balance view practical
   on pglike and Postgres?** Build `research/numeric-view/` (own Go module, so
   pgx stays out of the library's go.mod): one program, both drivers through
   `database/sql`, that loads n accounts × 100 movements and times a balance
@@ -31,7 +31,7 @@
   overhead relative to the control on each backend, and whether native
   NUMERIC storage is even correct on pglike (expected: no — `SUM` over a
   bare NUMERIC column is REAL in SQLite). Feeds go-luca position views
-  (gobank ADR-0002 stage 3)
+  (gobank ADR-0002 stage 3). Verdict: practical — exact on both drivers, free on PostgreSQL, a few percent on pglike; native NUMERIC storage is inexact on pglike
 
 ## Phase 3: Advanced Features
 
@@ -43,7 +43,7 @@
   so a view can publish a NUMERIC column computed from integers and read
   the same on both drivers. Bare NUMERIC columns and decimal literals in
   arithmetic (no cast) and numeric aggregates are a later step — needed by
-  go-luca's position views (gobank ADR-0002 stage 3)
+  go-luca's position views (gobank ADR-0002 stage 3). Verdict: practical — exact on both drivers, free on PostgreSQL, a few percent on pglike; native NUMERIC storage is inexact on pglike
 - Array types stored as JSON
 - JSONB containment operators (`@>`, `<@`, `#>`)
 - `ON CONFLICT ON CONSTRAINT <name>` → resolve to column list (requires schema introspection)

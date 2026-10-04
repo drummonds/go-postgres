@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+- `research-numeric-views.md`: analysis and verdict completed with the
+  PostgreSQL 16 run. Integer+exponent storage converted in the view is exact
+  on both drivers, free on PostgreSQL and a few percent on pglike; native
+  NUMERIC storage is 19–41% slower on PostgreSQL and inexact on pglike.
+  Roadmap story ticked.
+
 ## [0.7.1] - 2026-10-04
 
  - Updating numeric research

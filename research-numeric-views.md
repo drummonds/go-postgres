@@ -5,7 +5,7 @@ exponent to publish balances as `NUMERIC` with seven decimal places through
 a view, on pglike (go-postgres over SQLite) and on native PostgreSQL? And
 how does that compare with storing `NUMERIC` directly?
 
-**Status**: results below are from the run recorded in the results header.
+**Status**: complete. Results below are from the run recorded in the results header.
 Program: `research/numeric-view/` (own Go module). Run with
 `task research:numeric-view`; set `BENCH_PG_DSN` for the native pass.
 
@@ -136,38 +136,55 @@ CREATE VIEW balances_<design> AS
 
 ## Analysis
 
-**int-exponent is exact on pglike and nearly free.** Every balance matched
-the oracle at every scale. The view conversion is one `pg_numeric_*` call
-per output row (not per movement), so its cost is bounded by the number of
-accounts, not the number of movements: 2–10% over the integer control on
-the all-balances scan, within noise on the indexed one-account lookup. The
-`SUM` itself stays an integer sum in SQLite, which is where the time goes.
+**int-exponent is exact on both drivers.** Every balance matched the
+oracle at every scale on pglike (file and `:memory:`) and on PostgreSQL 16.
+That is the portability requirement for a view shared between development
+and production, and it holds.
 
-**native-numeric is not exact on pglike.** pglike stores a bare `NUMERIC`
-column as TEXT and SQLite's `SUM` over text is REAL arithmetic, so about
-43% of balances drifted in the 14th–16th significant digit
+**On PostgreSQL the conversion is free.** `SUM(bigint)` already yields a
+NUMERIC, so the `::numeric` cast costs nothing and the division and
+`round()` run once per output row. int-exponent came out at 0.90–1.01× the
+integer control on the all-balances scan and within noise on the indexed
+one-account read. Storing `NUMERIC(20,7)` natively is exact but 19–41%
+slower on the scan, because every one of the 100 movements per account is
+summed in NUMERIC arithmetic rather than in a machine integer.
+
+**On pglike the conversion is cheap.** The view adds one `pg_numeric_*`
+call chain (`pg_numeric`, `pg_numeric_div`, `pg_numeric_round` over
+`math/big`) per output row, not per movement, so the cost is bounded by
+the number of accounts: 1.00–1.15× the control on the all-balances scan.
+The `SUM` itself stays SQLite's integer sum, which is where the time goes.
+The one-account read was 1.03–1.15× in every cell but one (pglike-file at
+100k accounts, 1.68×); the earlier pglike-only run measured 0.99× for that
+cell, so it is run-to-run variance in a 300–500µs read, not a systematic
+cost.
+
+**native-numeric is wrong on pglike.** A bare `NUMERIC` column is stored
+as TEXT and SQLite's `SUM` over text is REAL arithmetic, so about 43% of
+balances drifted in the 14th–16th significant digit at every scale
 (`-500.5420417` came back as `-500.54204169999997`). It was also the
-slowest design, 10–40% over the control, because every movement is parsed
-from text before being summed. This is the design the roadmap defers
-("bare NUMERIC columns and numeric aggregates"); the study confirms it is
-a correctness gap, not just a performance one.
+slowest design on pglike, 9–34% over the control, because each movement is
+parsed from text before summing. This is the item the roadmap defers
+("bare NUMERIC columns and numeric aggregates"); the study shows it is a
+correctness gap, not only a performance one, and that the int-exponent
+design sidesteps it entirely.
 
-**Scale behaviour.** All-balances time grows linearly with rows on every
-design (45ms → 550ms → 5.9s for 100k → 1M → 10M rows); the one-account
-lookup stays at a few hundred microseconds through the index. `:memory:`
-loads faster than the file backend but queries at the same speed, as
-expected once the page cache is warm.
-
-**Native PostgreSQL.** _Pending: set `BENCH_PG_DSN` and run
-`task research:numeric-view` to fill in the `postgres` rows._
+**Scale.** The full scan grows linearly with rows on every backend
+(pglike 45ms → 540ms → 5.8s and PostgreSQL 10ms → 65ms → 0.8s for 100k →
+1M → 10M rows); PostgreSQL is 5–8× faster at the scan, which is the
+expected gap between a native engine and SQLite under wazero. Indexed
+one-account reads stay in the 65–530µs band on both, rising with table
+size as the index deepens. Bulk load through the identical `database/sql`
+multi-row INSERT path takes 19–23s for 10M rows on both, so the loader,
+not the engine, bounds load time here.
 
 ## Verdict
 
 | Question | Answer |
 |---|---|
-| Is int-exponent exact on pglike? | Yes, at every scale tested |
-| Is int-exponent exact on PostgreSQL? | _pending native run_ |
+| Is int-exponent exact on pglike? | Yes, at 1k, 10k and 100k accounts, file and `:memory:` |
+| Is int-exponent exact on PostgreSQL? | Yes, at every scale |
 | Is native-numeric exact on pglike? | No: SUM over a bare NUMERIC column is REAL arithmetic; ~43% of balances drift |
-| Cost of the view conversion vs the integer control, pglike | 2–10% on the full scan, noise on an indexed single-account read |
-| Cost of the view conversion vs the integer control, PostgreSQL | _pending native run_ |
-| Practical for go-luca position views? | On pglike, yes: int-exponent is the only exact design and costs a few percent. PostgreSQL verdict pending |
+| Cost of the view conversion vs the integer control, pglike | 0–15% on the full scan; noise on an indexed single-account read |
+| Cost of the view conversion vs the integer control, PostgreSQL | None measurable (0.90–1.01×); native NUMERIC storage would cost 19–41% |
+| Practical for go-luca position views? | Yes. Store BIGINT at the commodity exponent and convert in the view. It is the only design that is exact on both drivers, it is free on PostgreSQL and costs a few percent on pglike, and it is faster than storing NUMERIC natively on both |
