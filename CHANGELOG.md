@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- README: a pglike file whose views use `::numeric` is readable through
+  pglike only. The `pg_numeric_*` functions are registered per connection,
+  so another SQLite library (tbls, the `sqlite3` shell) cannot compile those
+  views; generate schema documentation from PostgreSQL or through pglike.
 - `research-numeric-views.md`: analysis and verdict completed with the
   PostgreSQL 16 run. Integer+exponent storage converted in the view is exact
   on both drivers, free on PostgreSQL and a few percent on pglike; native

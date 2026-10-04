@@ -130,6 +130,15 @@ and pass-through calls such as `coalesce()`. The functions are exact
 literal with no cast is not treated as numeric: the translator cannot know
 a column's type, so write the cast.
 
+The `pg_numeric_*` functions exist only on pglike's own connections. A view
+that uses them is stored in the SQLite file with those calls, so another
+SQLite library opening the same file (tbls, the `sqlite3` shell, a DB
+browser) cannot compile that view and fails with `no such function:
+pg_numeric`. SQLite has no exact decimal type to translate to instead, so
+this is the price of exactness: treat a pglike file with numeric views as
+readable through pglike only, and generate schema documentation from
+PostgreSQL or through pglike itself.
+
 ## Function Translations
 
 | PostgreSQL | SQLite |
