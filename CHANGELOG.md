@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
+ - NUMERIC arithmetic: ::numeric expressions evaluate exactly with PG's scale rules, usable in views
+
 ### Added
 - NUMERIC arithmetic. An expression with a `::numeric` or
   `CAST(... AS NUMERIC)` operand is evaluated exactly with PG's scale rules
