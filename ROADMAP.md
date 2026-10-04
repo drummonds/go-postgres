@@ -17,6 +17,13 @@
 
 - [x] Catalog views: `information_schema.{tables,columns,table_constraints,key_column_usage,referential_constraints,constraint_column_usage}` and `pg_indexes` installed per-connection so PG-style catalog queries work unchanged
 - [x] Schema support by name-mangling in the translator (`crm.customers` → `"crm.customers"`, `public` unprefixed) — one SQLite database, so cross-schema FKs, views, triggers and transactions keep working; `ATTACH DATABASE` rejected (no cross-DB FKs/views, per-connection re-attach, non-atomic WAL commits). `search_path` deferred
+- [x] NUMERIC arithmetic: `expr::numeric` / `CAST(... AS NUMERIC)` and `+ - * /`,
+  `round()` and comparisons on a numeric operand evaluate as exact decimals
+  with PG's scale rules (registered `pg_numeric_*` functions over math/big),
+  so a view can publish a NUMERIC column computed from integers and read
+  the same on both drivers. Bare NUMERIC columns and decimal literals in
+  arithmetic (no cast) and numeric aggregates are a later step — needed by
+  go-luca's position views (gobank ADR-0002 stage 3)
 - Array types stored as JSON
 - JSONB containment operators (`@>`, `<@`, `#>`)
 - `ON CONFLICT ON CONSTRAINT <name>` → resolve to column list (requires schema introspection)

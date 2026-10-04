@@ -194,6 +194,9 @@ func registerPGFunctions(conn *sqlite3.Conn) error {
 		return err
 	}
 
+	if err := registerNumericFunctions(conn); err != nil {
+		return err
+	}
 	return registerCatalogFunctions(conn)
 }
 

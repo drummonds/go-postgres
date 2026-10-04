@@ -256,6 +256,75 @@ func TestTranslateExpressions(t *testing.T) {
 	}
 }
 
+// A ::numeric cast becomes pg_numeric(); arithmetic, round() and comparisons
+// with a numeric operand become pg_numeric_* calls so SQLite evaluates them
+// exactly instead of as REAL or as text.
+func TestTranslateNumeric(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "::numeric cast",
+			input: "SELECT 7::numeric",
+			want:  "SELECT pg_numeric(7)",
+		},
+		{
+			name:  "CAST AS NUMERIC",
+			input: "SELECT CAST('7.50' AS NUMERIC)",
+			want:  "SELECT pg_numeric('7.50')",
+		},
+		{
+			name:  "cast with a scale rounds",
+			input: "SELECT x::numeric(10,2) FROM t",
+			want:  "SELECT pg_numeric_round(x, 2) FROM t",
+		},
+		{
+			name:  "division with a numeric operand",
+			input: "SELECT n::numeric / d FROM t",
+			want:  "SELECT pg_numeric_div(pg_numeric(n), d) FROM t",
+		},
+		{
+			name:  "round over a numeric expression",
+			input: "SELECT round(n::numeric / d, 7) AS accrued FROM t",
+			want:  "SELECT pg_numeric_round(pg_numeric_div(pg_numeric(n), d), 7) AS accrued FROM t",
+		},
+		{
+			name:  "precedence",
+			input: "SELECT 1 + a::numeric * 2",
+			want:  "SELECT pg_numeric_add(1, pg_numeric_mul(pg_numeric(a), 2))",
+		},
+		{
+			name:  "parenthesised numeric operand",
+			input: "SELECT (a::numeric + b) * c",
+			want:  "SELECT pg_numeric_mul((pg_numeric_add(pg_numeric(a), b)), c)",
+		},
+		{
+			name:  "comparison",
+			input: "SELECT * FROM t WHERE a::numeric > b",
+			want:  "SELECT * FROM t WHERE pg_numeric_cmp(pg_numeric(a), b) > 0",
+		},
+		{
+			name:  "arithmetic without a numeric operand is untouched",
+			input: "SELECT n / d, round(x, 2) FROM t",
+			want:  "SELECT n / d, round(x, 2) FROM t",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Translate(tt.input)
+			if err != nil {
+				t.Fatalf("Translate() error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Translate()\n  got:  %s\n  want: %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateFunctions(t *testing.T) {
 	tests := []struct {
 		name  string

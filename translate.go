@@ -371,6 +371,7 @@ func translateTokens(tokens []Token) []Token {
 	tokens = translateGenerateSeries(tokens)
 	tokens = translateSequenceDDL(tokens)
 	tokens = translateInterval(tokens)
+	tokens = translateNumeric(tokens)
 	tokens = translateDDL(tokens)
 	tokens = translateExpressions(tokens)
 	tokens = translateFunctions(tokens)

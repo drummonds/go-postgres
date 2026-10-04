@@ -98,7 +98,7 @@ The driver accepts several DSN formats:
 | `BIGINT` / `INT8` | `INTEGER` |
 | `REAL` / `FLOAT4` | `REAL` |
 | `DOUBLE PRECISION` / `FLOAT8` | `REAL` |
-| `NUMERIC(p,s)` / `DECIMAL(p,s)` | `TEXT` |
+| `NUMERIC(p,s)` / `DECIMAL(p,s)` | `TEXT` (exact; see numeric expressions below) |
 | `TEXT` | `TEXT` |
 | `INTERVAL` | `TEXT` |
 
@@ -117,6 +117,18 @@ The driver accepts several DSN formats:
 | `expr IS NOT FALSE` | `expr != 0` |
 | `$1`, `$2`, ... | `?` |
 | `DEFAULT NOW()` | `DEFAULT (datetime('now'))` |
+| `expr::numeric`, `CAST(expr AS NUMERIC)` | `pg_numeric(expr)` — exact decimal text |
+| `expr::numeric(p,s)` | `pg_numeric_round(expr, s)` |
+| numeric `+` `-` `*` `/` | `pg_numeric_add/sub/mul/div(a, b)` with PG's result scales |
+| `round(numeric, n)` | `pg_numeric_round(expr, n)` |
+| numeric `=` `<` `>` ... | `pg_numeric_cmp(a, b) <op> 0` |
+
+An expression is numeric when it has a `::numeric` or `CAST(... AS NUMERIC)`
+operand; the property carries through arithmetic, parentheses, `round()`
+and pass-through calls such as `coalesce()`. The functions are exact
+(`math/big`) and may be used in views. A bare NUMERIC column or a decimal
+literal with no cast is not treated as numeric: the translator cannot know
+a column's type, so write the cast.
 
 ## Function Translations
 

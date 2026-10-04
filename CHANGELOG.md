@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+- NUMERIC arithmetic. An expression with a `::numeric` or
+  `CAST(... AS NUMERIC)` operand is evaluated exactly with PG's scale rules
+  instead of as integer division, REAL arithmetic or a text comparison:
+  `7::numeric / 3` gives `2.3333333333333333`, `'2.50'::numeric * 4` gives
+  `10.00`, `'10'::numeric > '9'::numeric` is true. The translator emits
+  `pg_numeric`, `pg_numeric_add/sub/mul/div/neg/cmp` and `pg_numeric_round`
+  (registered per connection, innocuous so views may use them) and leaves
+  every other expression untouched. `x::numeric(p,s)` rounds to `s`.
+  Needed so a view can publish a NUMERIC column computed from integer
+  columns and read the same on PostgreSQL and pglike. Bare NUMERIC columns
+  and decimal literals without a cast are unchanged (documented in the
+  README). Corpus: `testdata/corpus/numeric.sql`.
+
 ## [0.6.0] - 2026-09-29
 
  - Adding metadata
