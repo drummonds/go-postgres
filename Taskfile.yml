@@ -110,3 +110,16 @@ tasks:
     cmds:
       - task-plus md2html --file index.md --dst docs
       - task-plus md2html --file research-soak-testing.md --dst docs
+      - task-plus md2html --file research-numeric-views.md --dst docs
+
+  research:numeric-view:
+    desc: Run the NUMERIC balance-view study (set BENCH_PG_DSN for the native Postgres pass; SCALES overrides account counts)
+    dir: research/numeric-view
+    cmds:
+      - go run . -scales {{.SCALES | default "1000,10000,100000"}} -out ../../research-numeric-views.md
+
+  research:numeric-view:test:
+    desc: Run the study's own tests
+    dir: research/numeric-view
+    cmds:
+      - go test -count=1 ./...

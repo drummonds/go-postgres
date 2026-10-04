@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- Research study `research-numeric-views.md`: whether a ledger that stores
+  BIGINT amounts at exponent −7 can publish NUMERIC(…,7) balances through a
+  view at acceptable cost, on pglike and native PostgreSQL, compared with
+  storing NUMERIC directly. The program lives in `research/numeric-view/`
+  (its own module, so pgx stays out of the library) and is run with
+  `task research:numeric-view`; it checks every published balance against a
+  `math/big` oracle and writes the tables into the document.
+
 ## [0.7.0] - 2026-10-04
 
  - NUMERIC arithmetic: ::numeric expressions evaluate exactly with PG's scale rules, usable in views

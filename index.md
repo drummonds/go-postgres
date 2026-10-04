@@ -52,6 +52,7 @@ go get git.bytestone.uk/hum3/go-postgres
 ## Research
 
 - [Soak Testing and Performance](research-soak-testing.html) — Memory behaviour, translation benchmarks, query cache results
+- [NUMERIC Balance Views](research-numeric-views.html) — Integer+exponent storage published as NUMERIC through a view vs native NUMERIC, on pglike and PostgreSQL
 
 ## Links
 

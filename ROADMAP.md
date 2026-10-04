@@ -13,6 +13,26 @@
 - [x] PG-style error codes in returned errors
 - [x] `EXPLAIN` output formatted like PG
 
+## Research: NUMERIC balance views
+
+- [ ] **Is an integer+exponent ledger with a NUMERIC(…,7) balance view practical
+  on pglike and Postgres?** Build `research/numeric-view/` (own Go module, so
+  pgx stays out of the library's go.mod): one program, both drivers through
+  `database/sql`, that loads n accounts × 100 movements and times a balance
+  view under three storage designs — BIGINT control (no conversion),
+  BIGINT at exponent −7 converted in the view with `SUM(amount)::numeric /
+  10^7`, and a native `NUMERIC(20,7)` column summed directly. Scale n over
+  1k/10k/100k (1M opt-in); measure all-balances and one-account queries,
+  load time, and exactness against a Go `math/big` oracle. Backends: pglike
+  file, pglike `:memory:`, Postgres (`BENCH_PG_DSN` or a podman
+  `postgres:16-alpine`). Output is `research-numeric-views.md` (purpose,
+  method, decision table, generated results, verdict), built by
+  `docs:build` and linked from `index.md`. Verdict wanted: the conversion
+  overhead relative to the control on each backend, and whether native
+  NUMERIC storage is even correct on pglike (expected: no — `SUM` over a
+  bare NUMERIC column is REAL in SQLite). Feeds go-luca position views
+  (gobank ADR-0002 stage 3)
+
 ## Phase 3: Advanced Features
 
 - [x] Catalog views: `information_schema.{tables,columns,table_constraints,key_column_usage,referential_constraints,constraint_column_usage}` and `pg_indexes` installed per-connection so PG-style catalog queries work unchanged
