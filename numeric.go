@@ -2,6 +2,7 @@ package pglike
 
 import (
 	"errors"
+	"iter"
 	"math/big"
 	"strconv"
 	"strings"
@@ -269,7 +270,69 @@ func registerNumericFunctions(conn *sqlite3.Conn) error {
 	exact := func(f func(numeric, numeric) numeric) func(numeric, numeric) (numeric, error) {
 		return func(a, b numeric) (numeric, error) { return f(a, b), nil }
 	}
+	// aggregate folds non-null inputs with step; empty input is NULL.
+	aggregate := func(name string, step func(acc numeric, n int, d numeric) numeric, finish func(acc numeric, n int) (numeric, error)) error {
+		return conn.CreateAggregateFunction(name, 1, sqlite3.DETERMINISTIC|sqlite3.INNOCUOUS,
+			func(ctx *sqlite3.Context, seq iter.Seq[[]sqlite3.Value]) {
+				var acc numeric
+				n := 0
+				for args := range seq {
+					d, null, err := arg(args[0])
+					if err != nil {
+						ctx.ResultError(err)
+						return
+					}
+					if null {
+						continue
+					}
+					acc = step(acc, n, d)
+					n++
+				}
+				if n == 0 {
+					ctx.ResultNull()
+					return
+				}
+				r, err := finish(acc, n)
+				if err != nil {
+					ctx.ResultError(err)
+					return
+				}
+				ctx.ResultText(r.String())
+			})
+	}
+	identity := func(acc numeric, n int) (numeric, error) { return acc, nil }
 	steps := []error{
+		aggregate("pg_numeric_sum",
+			func(acc numeric, n int, d numeric) numeric {
+				if n == 0 {
+					return d
+				}
+				return acc.add(d)
+			}, identity),
+		aggregate("pg_numeric_avg",
+			func(acc numeric, n int, d numeric) numeric {
+				if n == 0 {
+					return d
+				}
+				return acc.add(d)
+			},
+			func(acc numeric, n int) (numeric, error) {
+				return acc.div(numeric{big.NewInt(int64(n)), 0})
+			}),
+		aggregate("pg_numeric_min",
+			func(acc numeric, n int, d numeric) numeric {
+				if n > 0 && acc.cmp(d) <= 0 {
+					return acc
+				}
+				return d
+			}, identity),
+		aggregate("pg_numeric_max",
+			func(acc numeric, n int, d numeric) numeric {
+				if n > 0 && acc.cmp(d) >= 0 {
+					return acc
+				}
+				return d
+			}, identity),
 		unary("pg_numeric", func(d numeric) numeric { return d }),
 		unary("pg_numeric_neg", numeric.neg),
 		binary("pg_numeric_add", exact(numeric.add)),

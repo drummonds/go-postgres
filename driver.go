@@ -188,6 +188,12 @@ func parseDSN(dsn string) string {
 // conn wraps a SQLite connection with SQL translation.
 type conn struct {
 	inner driver.Conn
+
+	// numericCols caches which columns are declared NUMERIC, per table,
+	// for rewriteNumericAggregates; numericSchemaVersion is the
+	// PRAGMA schema_version it was read at.
+	numericCols          map[string]map[string]bool
+	numericSchemaVersion int64
 }
 
 // execDirect executes a SQL statement directly on the inner connection without translation.
@@ -239,6 +245,21 @@ func (c *conn) currval(seqName string) (int64, error) {
 }
 
 // resolveSequenceCalls replaces nextval('name') and currval('name') with their values.
+// prepareTranslated applies the per-connection rewrites a translated
+// statement needs before SQLite sees it: aggregates over NUMERIC columns
+// (which need the schema) and sequence calls (which need the sequence
+// table).
+func (c *conn) prepareTranslated(translated string) (string, error) {
+	if hasAggregateCall(translated) {
+		cols, err := c.numericColumns()
+		if err != nil {
+			return "", wrapError(err)
+		}
+		translated = rewriteNumericAggregates(translated, cols)
+	}
+	return c.resolveSequenceCalls(translated)
+}
+
 func (c *conn) resolveSequenceCalls(query string) (string, error) {
 	for {
 		idx := strings.Index(query, "nextval(")
@@ -299,7 +320,7 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	translated, err = c.resolveSequenceCalls(translated)
+	translated, err = c.prepareTranslated(translated)
 	if err != nil {
 		return nil, err
 	}

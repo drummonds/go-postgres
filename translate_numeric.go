@@ -374,6 +374,9 @@ func (p *numParser) parseCall(start int, name string) (numNode, bool) {
 	if strings.EqualFold(name, "round") && len(args) > 0 && args[0].numeric {
 		name, rewritten = "pg_numeric_round", true
 	}
+	if agg, ok := numericAggregates[strings.ToLower(name)]; ok && len(args) == 1 && args[0].numeric {
+		name, rewritten = agg, true
+	}
 	return numNode{numeric: numeric, rewritten: rewritten, text: p.compose(start, rewritten, name+"("+strings.Join(texts, ", ")+")")}, true
 }
 

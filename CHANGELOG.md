@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+- `sum`, `avg`, `min` and `max` over a column declared NUMERIC are exact.
+  SQLite stores the column as TEXT, so `sum` went through REAL (about 43%
+  of 7-decimal balances drifted in the 15th digit) and `min`/`max` compared
+  lexicographically. The driver now reads which columns are NUMERIC from
+  the `/*pg:numeric*/` annotations in `sqlite_master` (cached per
+  connection on `PRAGMA schema_version`) and rewrites those aggregates to
+  `pg_numeric_sum/avg/min/max`, new exact aggregate functions; `avg` carries
+  PG's division scale. A qualified column in a join and a `CREATE VIEW`
+  body are covered. `sum(x::numeric)` and friends, which also summed as
+  REAL, are rewritten by the translator. Integer columns are untouched, so
+  there is no cost on ordinary sums. Corpus: eight cases in
+  `testdata/corpus/numeric.sql`. Found by the NUMERIC balance-view study.
+
 ### Changed
 - README: a pglike file whose views use `::numeric` is readable through
   pglike only. The `pg_numeric_*` functions are registered per connection,

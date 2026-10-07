@@ -167,7 +167,8 @@ slowest design on pglike, 9–34% over the control, because each movement is
 parsed from text before summing. This is the item the roadmap defers
 ("bare NUMERIC columns and numeric aggregates"); the study shows it is a
 correctness gap, not only a performance one, and that the int-exponent
-design sidesteps it entirely.
+design sidesteps it entirely. This was fixed after the run; see
+[Follow-up](#follow-up-exact-aggregates-on-pglike).
 
 **Scale.** The full scan grows linearly with rows on every backend
 (pglike 45ms → 540ms → 5.8s and PostgreSQL 10ms → 65ms → 0.8s for 100k →
@@ -184,7 +185,41 @@ not the engine, bounds load time here.
 |---|---|
 | Is int-exponent exact on pglike? | Yes, at 1k, 10k and 100k accounts, file and `:memory:` |
 | Is int-exponent exact on PostgreSQL? | Yes, at every scale |
-| Is native-numeric exact on pglike? | No: SUM over a bare NUMERIC column is REAL arithmetic; ~43% of balances drift |
+| Is native-numeric exact on pglike? | Not at the time of the run (SUM over a bare NUMERIC column was REAL arithmetic; ~43% of balances drifted). Fixed since: exact, at 2.2–2.7× the integer control. See Follow-up |
 | Cost of the view conversion vs the integer control, pglike | 0–15% on the full scan; noise on an indexed single-account read |
 | Cost of the view conversion vs the integer control, PostgreSQL | None measurable (0.90–1.01×); native NUMERIC storage would cost 19–41% |
 | Practical for go-luca position views? | Yes. Store BIGINT at the commodity exponent and convert in the view. It is the only design that is exact on both drivers, it is free on PostgreSQL and costs a few percent on pglike, and it is faster than storing NUMERIC natively on both |
+
+## Follow-up: exact aggregates on pglike
+
+The study's inexact row was a go-postgres defect, not a property of the
+design: a NUMERIC column is TEXT in SQLite and the built-in `sum` summed
+it as REAL (`min`/`max` compared it lexicographically). go-postgres now
+rewrites `sum`/`avg`/`min`/`max` over a column declared NUMERIC, and over
+a `::numeric` expression, to exact `pg_numeric_*` aggregates. The driver
+knows which columns are NUMERIC from the `/*pg:numeric*/` annotation it
+leaves in `sqlite_master`; integer columns are untouched, so the control
+and int-exponent designs are unaffected. Overriding SQLite's built-in
+`sum` instead was measured and rejected: the wasm-to-Go callback per row
+made every integer `sum` 1.74× slower.
+
+Re-run on pglike with the fix (same method, 1k and 10k accounts):
+
+| Backend | Accounts | Design | All balances p50 | One account p50 | Exact | vs control |
+|---|---:|---|---:|---:|---|---:|
+| pglike-file | 1_000 | int-exponent | 50.59ms | 121.9us | yes | 1.03x |
+| pglike-file | 1_000 | native-numeric | 133.48ms | 224.4us | yes | 2.72x |
+| pglike-file | 10_000 | int-exponent | 594.70ms | 278.1us | yes | 1.07x |
+| pglike-file | 10_000 | native-numeric | 1.23s | 372.6us | yes | 2.22x |
+| pglike-memory | 1_000 | int-exponent | 48.00ms | 91.0us | yes | 1.08x |
+| pglike-memory | 1_000 | native-numeric | 111.33ms | 183.2us | yes | 2.50x |
+| pglike-memory | 10_000 | int-exponent | 587.34ms | 195.1us | yes | 1.06x |
+| pglike-memory | 10_000 | native-numeric | 1.21s | 234.3us | yes | 2.19x |
+
+native-numeric is now exact on pglike but costs 2.2–2.7× the integer
+control on the full scan, because each of the 100 movements per account is
+parsed and added as an exact decimal in Go. The verdict stands: store
+BIGINT at the exponent and convert in the view. It is exact on both
+drivers and costs a few percent on pglike and nothing on PostgreSQL,
+where native NUMERIC storage costs 19–41%. Native NUMERIC storage is now
+a correct choice on pglike, just a slower one.

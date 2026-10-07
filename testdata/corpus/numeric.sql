@@ -90,3 +90,84 @@ b|-41.0958904
 SELECT NULL::numeric / 3
 -- expect:
 NULL
+
+-- Aggregates. A bare NUMERIC column is TEXT in SQLite, so SUM/AVG would
+-- go through REAL and MIN/MAX would compare lexicographically. The driver
+-- rewrites aggregates over a column declared NUMERIC, and the translator
+-- rewrites aggregates over a ::numeric expression, to exact pg_numeric_*
+-- aggregates. Integer columns are untouched.
+
+-- case: sum over a bare NUMERIC column is exact
+-- setup:
+CREATE TABLE ledger (amount NUMERIC(20,7));
+INSERT INTO ledger VALUES ('0.1'), ('0.2'), ('-500.5420417');
+-- query:
+SELECT sum(amount) FROM ledger
+-- expect:
+-500.2420417
+
+-- case: sum over a cast expression is exact
+-- setup:
+CREATE TABLE ledger (amount NUMERIC(20,7));
+INSERT INTO ledger VALUES ('0.1'), ('0.2'), ('-500.5420417');
+-- query:
+SELECT sum(amount::numeric) FROM ledger
+-- expect:
+-500.2420417
+
+-- case: min and max over a bare NUMERIC column compare numerically
+-- setup:
+CREATE TABLE ledger (amount NUMERIC);
+INSERT INTO ledger VALUES ('100.0'), ('99.9'), ('-7');
+-- query:
+SELECT min(amount), max(amount) FROM ledger
+-- expect:
+-7|100.0
+
+-- case: avg over a bare NUMERIC column carries PG's division scale
+-- setup:
+CREATE TABLE ledger (amount NUMERIC);
+INSERT INTO ledger VALUES ('100.0'), ('99.9'), ('-7');
+-- query:
+SELECT avg(amount) FROM ledger
+-- expect:
+64.3000000000000000
+
+-- case: aggregates over a NUMERIC column skip nulls and are null when empty
+-- setup:
+CREATE TABLE ledger (amount NUMERIC);
+INSERT INTO ledger VALUES ('1.5'), (NULL);
+-- query:
+SELECT sum(amount), (SELECT sum(amount) FROM ledger WHERE amount IS NULL) FROM ledger
+-- expect:
+1.5|NULL
+
+-- case: sum over an integer column is unchanged
+-- setup:
+CREATE TABLE counts (n BIGINT);
+INSERT INTO counts VALUES (1), (2);
+-- query:
+SELECT sum(n) FROM counts
+-- expect:
+3
+
+-- case: a qualified NUMERIC column in a join is summed exactly
+-- setup:
+CREATE TABLE ledger (account TEXT, amount NUMERIC(20,7));
+CREATE TABLE accounts (name TEXT, open BOOLEAN);
+INSERT INTO ledger VALUES ('a', '0.1'), ('a', '0.2');
+INSERT INTO accounts VALUES ('a', TRUE);
+-- query:
+SELECT sum(l.amount) FROM ledger AS l JOIN accounts a ON a.name = l.account
+-- expect:
+0.3
+
+-- case: a view summing a bare NUMERIC column is exact
+-- setup:
+CREATE TABLE ledger (account TEXT, amount NUMERIC(20,7));
+INSERT INTO ledger VALUES ('a', '0.1'), ('a', '0.2');
+CREATE VIEW balances AS SELECT account, sum(amount) AS balance FROM ledger GROUP BY account;
+-- query:
+SELECT balance FROM balances
+-- expect:
+0.3

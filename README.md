@@ -122,13 +122,19 @@ The driver accepts several DSN formats:
 | numeric `+` `-` `*` `/` | `pg_numeric_add/sub/mul/div(a, b)` with PG's result scales |
 | `round(numeric, n)` | `pg_numeric_round(expr, n)` |
 | numeric `=` `<` `>` ... | `pg_numeric_cmp(a, b) <op> 0` |
+| `sum/avg/min/max(numeric)` | `pg_numeric_sum/avg/min/max(expr)` — exact aggregates |
+| `sum/avg/min/max(col)`, `col` declared NUMERIC | `pg_numeric_sum/avg/min/max(col)` — rewritten by the driver from the column's declared type |
 
 An expression is numeric when it has a `::numeric` or `CAST(... AS NUMERIC)`
-operand; the property carries through arithmetic, parentheses, `round()`
-and pass-through calls such as `coalesce()`. The functions are exact
-(`math/big`) and may be used in views. A bare NUMERIC column or a decimal
-literal with no cast is not treated as numeric: the translator cannot know
-a column's type, so write the cast.
+operand; the property carries through arithmetic, parentheses, `round()`,
+the aggregates and pass-through calls such as `coalesce()`. The functions
+are exact (`math/big`) and may be used in views. A bare NUMERIC column is
+TEXT in SQLite. Its aggregates are exact: the driver knows which columns
+were declared NUMERIC (from the `/*pg:numeric*/` annotation it leaves in
+`sqlite_master`) and rewrites `sum(amount)` over such a column, including a
+qualified `l.amount` in a join and inside a `CREATE VIEW`. Comparisons,
+`ORDER BY` and arithmetic on a bare NUMERIC column, and decimal literals
+with no cast, are not rewritten: write the cast.
 
 The `pg_numeric_*` functions exist only on pglike's own connections. A view
 that uses them is stored in the SQLite file with those calls, so another

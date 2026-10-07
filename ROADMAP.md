@@ -41,9 +41,17 @@
   `round()` and comparisons on a numeric operand evaluate as exact decimals
   with PG's scale rules (registered `pg_numeric_*` functions over math/big),
   so a view can publish a NUMERIC column computed from integers and read
-  the same on both drivers. Bare NUMERIC columns and decimal literals in
-  arithmetic (no cast) and numeric aggregates are a later step — needed by
-  go-luca's position views (gobank ADR-0002 stage 3). Verdict: practical — exact on both drivers, free on PostgreSQL, a few percent on pglike; native NUMERIC storage is inexact on pglike
+  the same on both drivers. Needed by go-luca's position views (gobank
+  ADR-0002 stage 3)
+- [x] NUMERIC aggregates: `sum`, `avg`, `min`, `max` over a column declared
+  NUMERIC (the driver reads the `/*pg:numeric*/` annotations from
+  `sqlite_master`) or over a `::numeric` expression are exact
+  `pg_numeric_*` aggregates. Found by the NUMERIC balance-view study:
+  SQLite summed the TEXT column as REAL and compared it lexicographically
+- Bare NUMERIC columns in comparisons, `ORDER BY` and arithmetic without a
+  cast are still TEXT/REAL in SQLite; a `COLLATE` on NUMERIC columns would
+  fix ordering and comparison, arithmetic needs the same schema-aware
+  rewrite as the aggregates. Decimal literals without a cast likewise
 - Array types stored as JSON
 - JSONB containment operators (`@>`, `<@`, `#>`)
 - `ON CONFLICT ON CONSTRAINT <name>` → resolve to column list (requires schema introspection)

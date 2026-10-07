@@ -47,7 +47,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err != nil {
 		return nil, err
 	}
-	translated, err = c.resolveSequenceCalls(translated)
+	translated, err = c.prepareTranslated(translated)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		if stmts[0].schema != nil {
 			return c.execSchemaDDL(stmts[0].schema)
 		}
-		resolved, err := c.resolveSequenceCalls(stmts[0].SQL)
+		resolved, err := c.prepareTranslated(stmts[0].SQL)
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +99,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 			lastResult = r
 			continue
 		}
-		resolved, err := c.resolveSequenceCalls(ts.SQL)
+		resolved, err := c.prepareTranslated(ts.SQL)
 		if err != nil {
 			return nil, err
 		}
