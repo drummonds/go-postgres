@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-09
+
+ - Exact NUMERIC aggregates: sum/avg/min/max over a NUMERIC column or ::numeric expression
+
 ### Fixed
 - `sum`, `avg`, `min` and `max` over a column declared NUMERIC are exact.
   SQLite stores the column as TEXT, so `sum` went through REAL (about 43%
