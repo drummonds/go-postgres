@@ -1,4 +1,4 @@
-module git.bytestone.uk/hum3/go-postgres/research/numeric-view
+module git.bytestone.uk/hum3/go-postgres/research
 
 go 1.26.0
 
@@ -19,4 +19,4 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 )
 
-replace git.bytestone.uk/hum3/go-postgres => ../..
+replace git.bytestone.uk/hum3/go-postgres => ..

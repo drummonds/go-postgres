@@ -1,8 +1,9 @@
-package main
+package harness
 
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -13,8 +14,21 @@ const (
 	markEnd   = "<!-- results:end -->"
 )
 
-// spliceResults replaces the text between the result markers in doc.
-func spliceResults(doc, results string) (string, error) {
+// WriteResults splices results into the document at path.
+func WriteResults(path, results string) error {
+	doc, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	spliced, err := SpliceResults(string(doc), results)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(spliced), 0o644)
+}
+
+// SpliceResults replaces the text between the result markers in doc.
+func SpliceResults(doc, results string) (string, error) {
 	i := strings.Index(doc, markStart)
 	j := strings.Index(doc, markEnd)
 	if i < 0 || j < 0 || j < i {
@@ -23,14 +37,14 @@ func spliceResults(doc, results string) (string, error) {
 	return doc[:i+len(markStart)] + "\n" + results + doc[j:], nil
 }
 
-type stats struct {
-	mean, p50, p99, min, max time.Duration
-	n                        int
+type Stats struct {
+	Mean, P50, P99, Min, Max time.Duration
+	N                        int
 }
 
-func summarise(ds []time.Duration) stats {
+func Summarise(ds []time.Duration) Stats {
 	if len(ds) == 0 {
-		return stats{}
+		return Stats{}
 	}
 	s := make([]time.Duration, len(ds))
 	copy(s, ds)
@@ -49,10 +63,10 @@ func summarise(ds []time.Duration) stats {
 		}
 		return s[k]
 	}
-	return stats{mean: total / time.Duration(len(s)), p50: pct(0.5), p99: pct(0.99), min: s[0], max: s[len(s)-1], n: len(s)}
+	return Stats{Mean: total / time.Duration(len(s)), P50: pct(0.5), P99: pct(0.99), Min: s[0], Max: s[len(s)-1], N: len(s)}
 }
 
-func fmtDur(d time.Duration) string {
+func FmtDur(d time.Duration) string {
 	switch {
 	case d < time.Millisecond:
 		return fmt.Sprintf("%.1fus", float64(d)/float64(time.Microsecond))
@@ -63,7 +77,7 @@ func fmtDur(d time.Duration) string {
 	}
 }
 
-func fmtInt(n int) string {
+func FmtInt(n int) string {
 	s := fmt.Sprint(n)
 	for i := len(s) - 3; i > 0; i -= 3 {
 		s = s[:i] + "_" + s[i:]

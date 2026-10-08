@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- Research study `research-uuid-keys.md`: what declaring UUID key columns
+  as `TEXT` costs on PostgreSQL (storage, index size, foreign-key walk,
+  point lookup, join), with pglike as the control where both are TEXT, and
+  a recommendation for schemas that must run on both. `research/` is now
+  one Go module with `cmd/numeric-view`, `cmd/uuid-keys` and a shared
+  `internal/harness`; `task research:test` runs their tests.
+
 ## [0.8.0] - 2026-10-09
 
  - Exact NUMERIC aggregates: sum/avg/min/max over a NUMERIC column or ::numeric expression

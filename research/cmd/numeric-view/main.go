@@ -13,51 +13,13 @@ import (
 	"math/big"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	_ "git.bytestone.uk/hum3/go-postgres"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"git.bytestone.uk/hum3/go-postgres/research/internal/harness"
 )
-
-type backend struct {
-	name  string
-	open  func() (*sql.DB, func(), error)
-	notes string
-}
-
-func backends(tmp string) []backend {
-	return []backend{
-		{name: "pglike-file", open: func() (*sql.DB, func(), error) {
-			path := filepath.Join(tmp, "numeric-view.db")
-			os.Remove(path)
-			db, err := sql.Open("pglike", path)
-			return db, func() { db.Close(); os.Remove(path) }, err
-		}},
-		{name: "pglike-memory", open: func() (*sql.DB, func(), error) {
-			db, err := sql.Open("pglike", ":memory:")
-			return db, func() { db.Close() }, err
-		}},
-		{name: "postgres", open: func() (*sql.DB, func(), error) {
-			dsn := os.Getenv("BENCH_PG_DSN")
-			if dsn == "" {
-				return nil, nil, fmt.Errorf("BENCH_PG_DSN not set")
-			}
-			db, err := sql.Open("pgx", dsn)
-			if err != nil {
-				return nil, nil, err
-			}
-			if err := db.Ping(); err != nil {
-				db.Close()
-				return nil, nil, err
-			}
-			return db, func() { db.Close() }, nil
-		}},
-	}
-}
 
 // A result is one design on one backend at one scale.
 type result struct {
@@ -65,7 +27,7 @@ type result struct {
 	accounts        int
 	rows            int
 	load            time.Duration
-	all, one        stats
+	all, one        harness.Stats
 	exact           bool
 	mismatches      int
 	example         string
@@ -105,25 +67,25 @@ func main() {
 	var results []result
 	var skipped []string
 	versions := map[string]string{}
-	for _, b := range backends(tmp) {
-		if !want[b.name] {
+	for _, b := range harness.Backends(tmp) {
+		if !want[b.Name] {
 			continue
 		}
-		db, closeDB, err := b.open()
+		db, closeDB, err := b.Open()
 		if err != nil {
-			skipped = append(skipped, fmt.Sprintf("%s: %v", b.name, err))
-			log.Printf("skip %s: %v", b.name, err)
+			skipped = append(skipped, fmt.Sprintf("%s: %v", b.Name, err))
+			log.Printf("skip %s: %v", b.Name, err)
 			continue
 		}
-		versions[b.name] = serverVersion(ctx, db)
+		versions[b.Name] = harness.ServerVersion(ctx, db)
 		for _, n := range scales {
 			ms := generate(n, *entries, *seed)
 			want := oracle(ms)
 			for _, d := range designs {
-				log.Printf("%s %s n=%d", b.name, d.name, n)
-				r, err := run(ctx, db, b.name, d, ms, want, *batch, *itersAll, *itersOne, *seed)
+				log.Printf("%s %s n=%d", b.Name, d.name, n)
+				r, err := run(ctx, db, b.Name, d, ms, want, *batch, *itersAll, *itersOne, *seed)
 				if err != nil {
-					log.Fatalf("%s %s n=%d: %v", b.name, d.name, n, err)
+					log.Fatalf("%s %s n=%d: %v", b.Name, d.name, n, err)
 				}
 				results = append(results, r)
 			}
@@ -140,15 +102,7 @@ func main() {
 	if *out == "" {
 		return
 	}
-	doc, err := os.ReadFile(*out)
-	if err != nil {
-		log.Fatal(err)
-	}
-	spliced, err := spliceResults(string(doc), md)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := os.WriteFile(*out, []byte(spliced), 0o644); err != nil {
+	if err := harness.WriteResults(*out, md); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("results written to %s", *out)
@@ -176,7 +130,7 @@ func run(ctx context.Context, db *sql.DB, backend string, d design, ms []movemen
 			}
 		}
 	}
-	r.all = summarise(all)
+	r.all = harness.Summarise(all)
 	rng := rand.New(rand.NewSource(seed))
 	var one []time.Duration
 	for i := 0; i < itersOne; i++ {
@@ -187,22 +141,8 @@ func run(ctx context.Context, db *sql.DB, backend string, d design, ms []movemen
 		}
 		one = append(one, time.Since(t))
 	}
-	r.one = summarise(one)
+	r.one = harness.Summarise(one)
 	return r, nil
-}
-
-func serverVersion(ctx context.Context, db *sql.DB) string {
-	var v string
-	if err := db.QueryRowContext(ctx, "SELECT version()").Scan(&v); err == nil {
-		if i := strings.Index(v, " on "); i > 0 {
-			v = v[:i]
-		}
-		return v
-	}
-	if err := db.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&v); err == nil {
-		return "pglike (working tree) over SQLite " + v
-	}
-	return "unknown"
 }
 
 func render(rs []result, skipped []string, versions map[string]string, entries, itersAll, itersOne int) string {
@@ -228,7 +168,7 @@ func render(rs []result, skipped []string, versions map[string]string, entries, 
 		}
 	}
 	for _, n := range scales {
-		fmt.Fprintf(&b, "### %s accounts (%s rows)\n\n", fmtInt(n), fmtInt(n*entries))
+		fmt.Fprintf(&b, "### %s accounts (%s rows)\n\n", harness.FmtInt(n), harness.FmtInt(n*entries))
 		b.WriteString("| Backend | Design | Load | All balances p50 | All p99 | One account p50 | One p99 | Exact |\n")
 		b.WriteString("|---|---|---:|---:|---:|---:|---:|---|\n")
 		for _, r := range rs {
@@ -240,7 +180,7 @@ func render(rs []result, skipped []string, versions map[string]string, entries, 
 				exact = fmt.Sprintf("no (%d of %d)", r.mismatches, r.accounts)
 			}
 			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
-				r.backend, r.design, fmtDur(r.load), fmtDur(r.all.p50), fmtDur(r.all.p99), fmtDur(r.one.p50), fmtDur(r.one.p99), exact)
+				r.backend, r.design, harness.FmtDur(r.load), harness.FmtDur(r.all.P50), harness.FmtDur(r.all.P99), harness.FmtDur(r.one.P50), harness.FmtDur(r.one.P99), exact)
 		}
 		b.WriteString("\n")
 		for _, r := range rs {
@@ -274,9 +214,9 @@ func render(rs []result, skipped []string, versions map[string]string, entries, 
 			if ctl == nil || ie == nil || nn == nil {
 				continue
 			}
-			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", name, fmtInt(n),
-				ratio(ie.all.p50, ctl.all.p50), ratio(ie.one.p50, ctl.one.p50),
-				ratio(nn.all.p50, ctl.all.p50), ratio(nn.one.p50, ctl.one.p50))
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", name, harness.FmtInt(n),
+				ratio(ie.all.P50, ctl.all.P50), ratio(ie.one.P50, ctl.one.P50),
+				ratio(nn.all.P50, ctl.all.P50), ratio(nn.one.P50, ctl.one.P50))
 		}
 	}
 	return b.String()

@@ -6,7 +6,7 @@ a view, on pglike (go-postgres over SQLite) and on native PostgreSQL? And
 how does that compare with storing `NUMERIC` directly?
 
 **Status**: complete. Results below are from the run recorded in the results header.
-Program: `research/numeric-view/` (own Go module). Run with
+Program: `research/cmd/numeric-view/` (in the `research` Go module). Run with
 `task research:numeric-view`; set `BENCH_PG_DSN` for the native pass.
 
 ## Why
