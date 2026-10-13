@@ -1,6 +1,7 @@
 remotes:
   - name: origin
     forge: forgejo
+    token_env: BYTESTONE_FORGEJO_TOKEN
   - name: github
     forge: github
 pages_build:
