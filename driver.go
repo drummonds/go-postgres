@@ -316,6 +316,9 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	if d, ok := parseSchemaDDL(Tokenize(query)); ok {
 		return &schemaStmt{c: c, ddl: d}, nil
 	}
+	if d, ok := parseAlterColumnType(Tokenize(query)); ok {
+		return &alterColumnStmt{c: c, ddl: d}, nil
+	}
 	translated, err := Translate(query)
 	if err != nil {
 		return nil, err

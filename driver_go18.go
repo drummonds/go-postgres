@@ -43,6 +43,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if d, ok := parseSchemaDDL(Tokenize(query)); ok {
 		return &schemaStmt{c: c, ddl: d}, nil
 	}
+	if d, ok := parseAlterColumnType(Tokenize(query)); ok {
+		return &alterColumnStmt{c: c, ddl: d}, nil
+	}
 	translated, err := Translate(query)
 	if err != nil {
 		return nil, err
@@ -80,6 +83,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		if stmts[0].schema != nil {
 			return c.execSchemaDDL(stmts[0].schema)
 		}
+		if stmts[0].alter != nil {
+			return c.execAlterColumnType(stmts[0].alter)
+		}
 		resolved, err := c.prepareTranslated(stmts[0].SQL)
 		if err != nil {
 			return nil, err
@@ -93,6 +99,14 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	for _, ts := range stmts {
 		if ts.schema != nil {
 			r, err := c.execSchemaDDL(ts.schema)
+			if err != nil {
+				return nil, err
+			}
+			lastResult = r
+			continue
+		}
+		if ts.alter != nil {
+			r, err := c.execAlterColumnType(ts.alter)
 			if err != nil {
 				return nil, err
 			}

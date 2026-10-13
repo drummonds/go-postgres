@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- `UUID` columns compare and validate as PG's `uuid` does: the column is
+  `TEXT COLLATE NOCASE` so a lookup matches in either case, with a named
+  `CHECK` that rejects anything but a hyphenated UUID (SQLSTATE `22P02`).
+  The `/*pg:uuid*/` annotation is unchanged, so the catalogs still report
+  `uuid`. Corpus: `testdata/corpus/uuid.sql`.
+- `ALTER TABLE ... ALTER COLUMN ... [SET DATA] TYPE type [USING expr]`,
+  which SQLite has no statement for: the driver rebuilds the table (rows
+  to a temporary copy, drop, create with the new type, rows back through
+  the `USING` expression, indexes and triggers recreated), inside a
+  savepoint so it rolls back with an enclosing transaction. Views over
+  the table and foreign keys from other tables survive. Unknown table and
+  column fail with `42P01` and `42703`. Corpus:
+  `testdata/corpus/alter_column_type.sql`. Needed by go-luca #10 (gobank
+  #66), which retypes every id column from `TEXT` to `UUID`.
 - Research study `research-uuid-keys.md`: what declaring UUID key columns
   as `TEXT` costs on PostgreSQL (storage, index size, foreign-key walk,
   point lookup, join), with pglike as the control where both are TEXT, and

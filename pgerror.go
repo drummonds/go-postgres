@@ -50,6 +50,8 @@ func classifySQLiteError(msg string) string {
 		return "23502" // not_null_violation
 	case strings.Contains(lower, "foreign key constraint") || strings.Contains(lower, "foreign_key_constraint"):
 		return "23503" // foreign_key_violation
+	case strings.Contains(lower, "check constraint failed: "+uuidConstraintPrefix):
+		return "22P02" // invalid_text_representation: not a uuid
 	case strings.Contains(lower, "check constraint") || strings.Contains(lower, "check_constraint"):
 		return "23514" // check_violation
 	case strings.Contains(lower, "no such table") || strings.Contains(lower, "no_such_table"):

@@ -317,6 +317,13 @@ func translateTypes(tokens []Token, annotate bool) []Token {
 			out = append(out, sqliteType("TEXT", "time", annotate)...)
 			continue
 
+		case "UUID":
+			if col, ok := columnDefName(out); ok && annotate {
+				out = append(out, uuidColumnTokens(col)...)
+				continue
+			}
+			out = append(out, sqliteType("TEXT", "uuid", annotate)...)
+
 		default:
 			if mapped, ok := pgTypeToSQLite[t.Value]; ok {
 				out = append(out, sqliteType(mapped, pgUDT[t.Value], annotate)...)
@@ -326,6 +333,54 @@ func translateTypes(tokens []Token, annotate bool) []Token {
 		}
 	}
 	return out
+}
+
+// columnDefName returns the column whose definition the tokens emitted so
+// far are in the middle of: the last token is a name and what precedes it
+// opens a column definition (the table's "(" or a ",", or ADD [COLUMN]).
+func columnDefName(out []Token) (Token, bool) {
+	i := len(out) - 1
+	for i >= 0 && (out[i].Kind == TokWhitespace || out[i].Kind == TokComment) {
+		i--
+	}
+	if i < 0 || !isNamePart(out[i]) {
+		return Token{}, false
+	}
+	name := out[i]
+	j := i - 1
+	for j >= 0 && (out[j].Kind == TokWhitespace || out[j].Kind == TokComment) {
+		j--
+	}
+	switch {
+	case j < 0:
+		return name, true
+	case out[j].Kind == TokParen && out[j].Value == "(", out[j].Kind == TokComma:
+		return name, true
+	case isNamePart(out[j]) && (strings.EqualFold(out[j].Raw, "COLUMN") || strings.EqualFold(out[j].Raw, "ADD")):
+		return name, true
+	}
+	return Token{}, false
+}
+
+// uuidConstraintPrefix names the CHECK the driver adds to a UUID column.
+const uuidConstraintPrefix = "pglike_uuid_"
+
+// uuidGlob matches the canonical 8-4-4-4-12 hex form in either case.
+var uuidGlob = func() string {
+	hex := "[0-9a-fA-F]"
+	group := func(n int) string { return strings.Repeat(hex, n) }
+	return group(8) + "-" + group(4) + "-" + group(4) + "-" + group(4) + "-" + group(12)
+}()
+
+// uuidColumnTokens is a UUID column's SQLite type: TEXT that compares
+// without regard to case, as PG compares uuid values, and a CHECK that
+// rejects anything but a UUID (surfaced as PG's 22P02). NULL passes the
+// CHECK, as PG's NULL does.
+func uuidColumnTokens(col Token) []Token {
+	constraint := quotedIdent(uuidConstraintPrefix + unquoteIdent(col.Raw)).Raw
+	tail := " COLLATE NOCASE CONSTRAINT " + constraint + " CHECK (" + col.Raw + " GLOB '" + uuidGlob + "')"
+	toks := sqliteType("TEXT", "uuid", true)
+	return append(toks, Tokenize(tail)...)
 }
 
 // pgUDT maps PG type keywords to PG's internal type name, as reported in

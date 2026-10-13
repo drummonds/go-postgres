@@ -73,7 +73,7 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "UUID",
 			input: "CREATE TABLE t (id UUID)",
-			want:  "CREATE TABLE t (id TEXT/*pg:uuid*/)",
+			want:  "CREATE TABLE t (id " + uuidColumnSQL("id") + ")",
 		},
 		{
 			name:  "BYTEA",
@@ -128,7 +128,7 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "DEFAULT gen_random_uuid()",
 			input: "CREATE TABLE t (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ts TIMESTAMP NOT NULL)",
-			want:  "CREATE TABLE t (id TEXT/*pg:uuid*/ PRIMARY KEY DEFAULT (gen_random_uuid()), ts TEXT/*pg:timestamp*/ NOT NULL)",
+			want:  "CREATE TABLE t (id " + uuidColumnSQL("id") + " PRIMARY KEY DEFAULT (gen_random_uuid()), ts TEXT/*pg:timestamp*/ NOT NULL)",
 		},
 		{
 			name:  "DEFAULT function call with arguments",
@@ -138,7 +138,7 @@ func TestTranslateDDL(t *testing.T) {
 		{
 			name:  "DEFAULT already parenthesised is left alone",
 			input: "CREATE TABLE t (id UUID PRIMARY KEY DEFAULT (gen_random_uuid()))",
-			want:  "CREATE TABLE t (id TEXT/*pg:uuid*/ PRIMARY KEY DEFAULT (gen_random_uuid()))",
+			want:  "CREATE TABLE t (id " + uuidColumnSQL("id") + " PRIMARY KEY DEFAULT (gen_random_uuid()))",
 		},
 		{
 			name:  "DEFAULT literal is left alone",
@@ -929,7 +929,7 @@ func TestTranslateMulti(t *testing.T) {
 			wantCount: 2,
 			wantSQL: []string{
 				"CREATE TABLE a (id INTEGER/*pg:int4*/ PRIMARY KEY AUTOINCREMENT)",
-				" CREATE TABLE b (id TEXT/*pg:uuid*/)",
+				" CREATE TABLE b (id " + uuidColumnSQL("id") + ")",
 			},
 		},
 		{
@@ -1014,4 +1014,9 @@ func TestParseDSN(t *testing.T) {
 			}
 		})
 	}
+}
+
+// uuidColumnSQL is the SQLite column type a UUID column translates to.
+func uuidColumnSQL(col string) string {
+	return Reassemble(uuidColumnTokens(Token{Kind: TokIdent, Value: col, Raw: col}))
 }

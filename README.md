@@ -90,7 +90,7 @@ The driver accepts several DSN formats:
 | `TIMESTAMP` / `TIMESTAMP WITH TIME ZONE` / `TIMESTAMPTZ` | `TEXT` |
 | `DATE` | `TEXT` |
 | `TIME` / `TIME WITH TIME ZONE` / `TIMETZ` | `TEXT` |
-| `UUID` | `TEXT` |
+| `UUID` | `TEXT COLLATE NOCASE` with a `CHECK` that the value is a UUID (see below) |
 | `BYTEA` | `BLOB` |
 | `JSON` / `JSONB` | `TEXT` |
 | `SMALLINT` / `INT2` | `INTEGER` |
@@ -101,6 +101,21 @@ The driver accepts several DSN formats:
 | `NUMERIC(p,s)` / `DECIMAL(p,s)` | `TEXT` (exact; see numeric expressions below) |
 | `TEXT` | `TEXT` |
 | `INTERVAL` | `TEXT` |
+
+A `UUID` column behaves as PG's `uuid` type: a lookup matches whatever the
+case of either side, and a value that is not a hyphenated UUID is rejected
+with SQLSTATE `22P02`. `NULL` is allowed. The value is stored as the text
+given, so it reads back in the case it was written, where PG would
+lower-case it.
+
+`ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE type [USING expr]` is run by
+the driver, since SQLite cannot retype a column: the rows are kept in a
+temporary copy, the table is dropped and created again with the new type,
+the rows are put back through the `USING` expression, and the table's
+indexes and triggers are recreated. Views over the table are untouched.
+Foreign keys that reference the table are deferred for the transaction so
+the rebuild nets to no violation; a retype that leaves a child row without
+a parent fails at commit as it would in PG.
 
 ## Expression Translations
 
