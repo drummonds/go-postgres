@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-13
+
+ - UUID columns compare and validate as uuid; ALTER COLUMN TYPE, DROP/ADD CONSTRAINT rebuild the table; FK names as PG; qualified-column casts; UUID key study results
+
 ### Added
 - `UUID` columns compare and validate as PG's `uuid` does: the column is
   `TEXT COLLATE NOCASE` so a lookup matches in either case, with a named
