@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-14
+
 ### Changed
 - Releases go through a pull request: `task-plus.yml` declares
   `maturity: {code: 1}` with `merge_wait: 10m`. v0.9.0 was tagged on its
