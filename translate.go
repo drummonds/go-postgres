@@ -391,8 +391,7 @@ func Translate(sql string) (string, error) {
 type translatedStmt struct {
 	SQL       string
 	NumParams int
-	schema    *schemaDDL       // CREATE/DROP SCHEMA, executed by the driver instead of SQL
-	alter     *alterColumnType // ALTER TABLE ... ALTER COLUMN ... TYPE, likewise
+	ddl       driverDDL // a statement the driver runs itself instead of as SQL
 }
 
 // TranslateMulti translates a potentially multi-statement SQL string,
@@ -402,12 +401,8 @@ func TranslateMulti(sql string) ([]translatedStmt, error) {
 	stmts := splitStatements(tokens)
 	result := make([]translatedStmt, 0, len(stmts))
 	for _, stmtTokens := range stmts {
-		if d, ok := parseSchemaDDL(stmtTokens); ok {
-			result = append(result, translatedStmt{schema: d})
-			continue
-		}
-		if d, ok := parseAlterColumnType(stmtTokens); ok {
-			result = append(result, translatedStmt{alter: d})
+		if d, ok := parseDriverDDL(stmtTokens); ok {
+			result = append(result, translatedStmt{ddl: d})
 			continue
 		}
 		nParams := countTokenParams(stmtTokens)

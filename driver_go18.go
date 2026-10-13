@@ -40,11 +40,8 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 // PrepareContext implements driver.ConnPrepareContext.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	if d, ok := parseSchemaDDL(Tokenize(query)); ok {
-		return &schemaStmt{c: c, ddl: d}, nil
-	}
-	if d, ok := parseAlterColumnType(Tokenize(query)); ok {
-		return &alterColumnStmt{c: c, ddl: d}, nil
+	if d, ok := parseDriverDDL(Tokenize(query)); ok {
+		return &ddlStmt{c: c, ddl: d}, nil
 	}
 	translated, err := Translate(query)
 	if err != nil {
@@ -80,11 +77,8 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 
 	// Single statement — use fast path.
 	if len(stmts) == 1 {
-		if stmts[0].schema != nil {
-			return c.execSchemaDDL(stmts[0].schema)
-		}
-		if stmts[0].alter != nil {
-			return c.execAlterColumnType(stmts[0].alter)
+		if stmts[0].ddl != nil {
+			return stmts[0].ddl.exec(c)
 		}
 		resolved, err := c.prepareTranslated(stmts[0].SQL)
 		if err != nil {
@@ -97,16 +91,8 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	argOffset := 0
 	var lastResult driver.Result = driver.ResultNoRows
 	for _, ts := range stmts {
-		if ts.schema != nil {
-			r, err := c.execSchemaDDL(ts.schema)
-			if err != nil {
-				return nil, err
-			}
-			lastResult = r
-			continue
-		}
-		if ts.alter != nil {
-			r, err := c.execAlterColumnType(ts.alter)
+		if ts.ddl != nil {
+			r, err := ts.ddl.exec(c)
 			if err != nil {
 				return nil, err
 			}

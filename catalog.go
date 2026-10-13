@@ -55,7 +55,7 @@ var catalogViews = []string{
 	// table_constraints: one row per PK/FK/UNIQUE constraint per table.
 	// Constraint names are synthesised — SQLite doesn't preserve them.
 	//   PK   → <table>_pkey
-	//   FK   → <table>_fk_<id>      (id from pragma_foreign_key_list)
+	//   FK   → <table>_<columns>_fkey  (as PG names an unnamed one)
 	//   UNIQ → <pragma_index_list.name>
 	`CREATE TEMP VIEW _pglike_information_schema_table_constraints AS
 	SELECT 'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
@@ -69,7 +69,7 @@ var catalogViews = []string{
 	  AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) p WHERE p.pk > 0)
 	UNION ALL
 	SELECT 'main', _pglike_nspname(m.name),
-	       _pglike_relname(m.name) || '_fk_' || fk.id,
+	       _pglike_relname(m.name) || '_' || (SELECT group_concat(f2."from", '_') FROM pragma_foreign_key_list(m.name) f2 WHERE f2.id = fk.id) || '_fkey',
 	       'main', _pglike_nspname(m.name), _pglike_relname(m.name),
 	       'FOREIGN KEY'
 	FROM sqlite_master m, pragma_foreign_key_list(m.name) fk
@@ -102,7 +102,7 @@ var catalogViews = []string{
 	  AND m.name <> '_sequences'
 	UNION ALL
 	SELECT 'main', _pglike_nspname(m.name),
-	       _pglike_relname(m.name) || '_fk_' || fk.id,
+	       _pglike_relname(m.name) || '_' || (SELECT group_concat(f2."from", '_') FROM pragma_foreign_key_list(m.name) f2 WHERE f2.id = fk.id) || '_fkey',
 	       'main', _pglike_nspname(m.name), _pglike_relname(m.name),
 	       fk."from",
 	       fk.seq + 1,
@@ -116,7 +116,7 @@ var catalogViews = []string{
 	// unique_constraint_name points at the parent table's PK by convention.
 	`CREATE TEMP VIEW _pglike_information_schema_referential_constraints AS
 	SELECT 'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
-	       _pglike_relname(m.name) || '_fk_' || fk.id AS constraint_name,
+	       _pglike_relname(m.name) || '_' || (SELECT group_concat(f2."from", '_') FROM pragma_foreign_key_list(m.name) f2 WHERE f2.id = fk.id) || '_fkey' AS constraint_name,
 	       'main' AS unique_constraint_catalog,
 	       _pglike_nspname(fk."table") AS unique_constraint_schema,
 	       _pglike_relname(fk."table") || '_pkey' AS unique_constraint_name,
@@ -136,7 +136,7 @@ var catalogViews = []string{
 	       _pglike_relname(fk."table") AS table_name,
 	       fk."to" AS column_name,
 	       'main' AS constraint_catalog, _pglike_nspname(m.name) AS constraint_schema,
-	       _pglike_relname(m.name) || '_fk_' || fk.id AS constraint_name
+	       _pglike_relname(m.name) || '_' || (SELECT group_concat(f2."from", '_') FROM pragma_foreign_key_list(m.name) f2 WHERE f2.id = fk.id) || '_fkey' AS constraint_name
 	FROM sqlite_master m, pragma_foreign_key_list(m.name) fk
 	WHERE m.type = 'table'
 	  AND m.name NOT LIKE 'sqlite_%'

@@ -15,8 +15,23 @@
   savepoint so it rolls back with an enclosing transaction. Views over
   the table and foreign keys from other tables survive. Unknown table and
   column fail with `42P01` and `42703`. Corpus:
-  `testdata/corpus/alter_column_type.sql`. Needed by go-luca #10 (gobank
-  #66), which retypes every id column from `TEXT` to `UUID`.
+  `testdata/corpus/alter_column_type.sql`.
+- `ALTER TABLE ... DROP CONSTRAINT [IF EXISTS] name` and `ALTER TABLE ...
+  ADD CONSTRAINT name FOREIGN KEY (...) REFERENCES ...`, by the same
+  rebuild. A dropped name is found as written in the table's definition
+  or as the catalogs synthesise it for a foreign key. Corpus:
+  `testdata/corpus/alter_constraint.sql`. With the retype these are what
+  go-luca #10 (gobank #66) needs to move every id column from `TEXT` to
+  `UUID`: PG will not retype a referenced key while its foreign key
+  stands, so a migration drops the key, retypes both sides and adds it
+  back, and the same SQL now runs on pglike.
+
+### Changed
+- Foreign key constraints are named in the catalogs as PG names an
+  unnamed one, `<table>_<columns>_fkey`, instead of `<table>_fk_<id>`:
+  SQLite numbers foreign keys in reverse declaration order, so the old
+  name moved whenever one was dropped, and PG's name is what a migration
+  written against PG drops.
 - Research study `research-uuid-keys.md`: what declaring UUID key columns
   as `TEXT` costs on PostgreSQL (storage, index size, foreign-key walk,
   point lookup, join), with pglike as the control where both are TEXT, and

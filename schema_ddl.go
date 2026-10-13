@@ -82,8 +82,8 @@ func pgErrorf(code, format string, args ...any) error {
 	return &PGError{Code: code, Message: fmt.Sprintf(format, args...)}
 }
 
-// execSchemaDDL runs a CREATE or DROP SCHEMA on this connection.
-func (c *conn) execSchemaDDL(d *schemaDDL) (driver.Result, error) {
+// exec runs a CREATE or DROP SCHEMA on this connection.
+func (d *schemaDDL) exec(c *conn) (driver.Result, error) {
 	for _, name := range d.names {
 		var err error
 		if d.create {
@@ -202,19 +202,4 @@ func (c *conn) queryDirectStrings(sql string, args ...driver.Value) ([]string, e
 		}
 		out = append(out, fmt.Sprint(dest[0]))
 	}
-}
-
-// schemaStmt is a prepared CREATE/DROP SCHEMA.
-type schemaStmt struct {
-	c   *conn
-	ddl *schemaDDL
-}
-
-func (s *schemaStmt) Close() error  { return nil }
-func (s *schemaStmt) NumInput() int { return 0 }
-func (s *schemaStmt) Exec([]driver.Value) (driver.Result, error) {
-	return s.c.execSchemaDDL(s.ddl)
-}
-func (s *schemaStmt) Query([]driver.Value) (driver.Rows, error) {
-	return nil, errors.New("pglike: CREATE/DROP SCHEMA returns no rows")
 }

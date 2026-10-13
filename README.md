@@ -108,14 +108,23 @@ with SQLSTATE `22P02`. `NULL` is allowed. The value is stored as the text
 given, so it reads back in the case it was written, where PG would
 lower-case it.
 
-`ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE type [USING expr]` is run by
-the driver, since SQLite cannot retype a column: the rows are kept in a
-temporary copy, the table is dropped and created again with the new type,
-the rows are put back through the `USING` expression, and the table's
-indexes and triggers are recreated. Views over the table are untouched.
-Foreign keys that reference the table are deferred for the transaction so
-the rebuild nets to no violation; a retype that leaves a child row without
-a parent fails at commit as it would in PG.
+Three `ALTER TABLE` forms SQLite has no statement for are run by the
+driver, which rebuilds the table: the rows are kept in a temporary copy,
+the table is dropped and created again from its rewritten definition, the
+rows are put back, and the table's indexes and triggers are recreated.
+Views over the table are untouched. The rebuild runs in a savepoint, so it
+rolls back with an enclosing transaction, with foreign keys deferred so a
+referenced table nets to no violation; a change that leaves a child row
+without a parent fails where the transaction ends, as it would in PG.
+
+| Statement | Rewrite |
+|---|---|
+| `ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE type [USING expr]` | The column's type; rows come back through `expr` |
+| `ALTER TABLE t DROP CONSTRAINT [IF EXISTS] name` | The constraint named `name`, or the foreign key the catalogs call `name`, is removed (`42704` if neither) |
+| `ALTER TABLE t ADD CONSTRAINT name FOREIGN KEY (cols) REFERENCES p (cols) [actions]` | The constraint is appended as written |
+
+To retype a key that a foreign key references, as PG also requires: drop
+the foreign key, retype both columns, add it back.
 
 ## Expression Translations
 
@@ -204,7 +213,7 @@ PG-style catalog queries work out of the box. On every new connection, the drive
 | `information_schema.schemata` | `public` plus schemas made with `CREATE SCHEMA` |
 | `information_schema.tables` | `table_catalog`, `table_schema`, `table_name`, `table_type` (`BASE TABLE` or `VIEW`) |
 | `information_schema.columns` | `column_name`, `data_type`/`udt_name` (the PG type as declared, e.g. `bigint`/`int8`), `is_nullable`, `ordinal_position` (1-based), `column_default` |
-| `information_schema.table_constraints` | `PRIMARY KEY`, `FOREIGN KEY`, `UNIQUE` rows; constraint names synthesised (`<table>_pkey`, `<table>_fk_<id>`) |
+| `information_schema.table_constraints` | `PRIMARY KEY`, `FOREIGN KEY`, `UNIQUE` rows; constraint names synthesised as PG names an unnamed one (`<table>_pkey`, `<table>_<columns>_fkey`) |
 | `information_schema.key_column_usage` | One row per column in a PK or FK |
 | `information_schema.referential_constraints` | FK metadata: `update_rule`, `delete_rule` |
 | `information_schema.constraint_column_usage` | Columns referenced by a constraint (parent-side for FKs) |
