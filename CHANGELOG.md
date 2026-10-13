@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+- Releases go through a pull request: `task-plus.yml` declares
+  `maturity: {code: 1}` with `merge_wait: 10m`. v0.9.0 was tagged on its
+  story branch without main moving; see task-plus #68.
+
 ## [0.9.0] - 2026-10-13
 
  - UUID columns compare and validate as uuid; ALTER COLUMN TYPE, DROP/ADD CONSTRAINT rebuild the table; FK names as PG; qualified-column casts; UUID key study results

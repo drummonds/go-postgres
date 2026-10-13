@@ -8,3 +8,6 @@ pages_build:
 pages_deploy:
   - type: rsync
     site: go-postgres
+maturity:
+  code: 1
+merge_wait: 10m
