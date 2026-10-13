@@ -125,3 +125,25 @@ CREATE TABLE a (id TEXT PRIMARY KEY);
 -- query:
 ALTER TABLE a ALTER COLUMN nope TYPE uuid
 -- expect-error: 42703
+
+-- case: several columns retyped in one statement
+-- setup:
+CREATE TABLE t (id TEXT PRIMARY KEY, batch_id TEXT NOT NULL, n TEXT);
+INSERT INTO t (id, batch_id, n) VALUES ('6ba7b810-9dad-11d1-80b4-00c04fd430c8', '7ba7b810-9dad-11d1-80b4-00c04fd430c8', '41');
+ALTER TABLE t ALTER COLUMN id TYPE uuid USING id::uuid, ALTER COLUMN batch_id TYPE uuid USING batch_id::uuid, ALTER COLUMN n TYPE INTEGER USING n::integer + 1;
+-- query:
+SELECT udt_name FROM information_schema.columns WHERE table_name = 't' ORDER BY ordinal_position
+-- expect:
+uuid
+uuid
+int4
+
+-- case: several columns retyped in one statement keep their rows
+-- setup:
+CREATE TABLE t (id TEXT PRIMARY KEY, batch_id TEXT NOT NULL, n TEXT);
+INSERT INTO t (id, batch_id, n) VALUES ('6ba7b810-9dad-11d1-80b4-00c04fd430c8', '7ba7b810-9dad-11d1-80b4-00c04fd430c8', '41');
+ALTER TABLE t ALTER COLUMN id TYPE uuid USING id::uuid, ALTER COLUMN batch_id TYPE uuid USING batch_id::uuid, ALTER COLUMN n TYPE INTEGER USING n::integer + 1;
+-- query:
+SELECT n FROM t WHERE batch_id = '7BA7B810-9DAD-11D1-80B4-00C04FD430C8'
+-- expect:
+42

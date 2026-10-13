@@ -152,38 +152,42 @@ func (c *conn) rebuildTable(t storedTable, createSQL, copyBack string) error {
 }
 
 // copyBackSQL is the translated INSERT ... SELECT that refills a rebuilt
-// table from the copy; retyped names a column read through expr instead
-// of as itself.
-func (c *conn) copyBackSQL(t storedTable, retyped, expr string) (string, error) {
+// table from the copy; exprs, by lower-cased column name, are the columns
+// read through an expression instead of as themselves.
+func (c *conn) copyBackSQL(t storedTable, exprs map[string]string) (string, error) {
 	cols, err := c.queryDirectStrings(`SELECT name FROM pragma_table_info(?)`, t.name)
 	if err != nil {
 		return "", wrapError(err)
 	}
 	names := make([]string, len(cols))
-	exprs := make([]string, len(cols))
+	reads := make([]string, len(cols))
 	for i, col := range cols {
 		names[i] = quotedIdent(col).Raw
-		exprs[i] = names[i]
-		if expr != "" && strings.EqualFold(col, retyped) {
-			exprs[i] = expr
+		reads[i] = names[i]
+		if e, ok := exprs[strings.ToLower(col)]; ok {
+			reads[i] = e
 		}
 	}
 	return Translate("INSERT INTO " + quotedIdent(t.name).Raw + " (" + strings.Join(names, ", ") + ") SELECT " +
-		strings.Join(exprs, ", ") + " FROM " + alterTableCopy)
+		strings.Join(reads, ", ") + " FROM " + alterTableCopy)
 }
 
 // ---- ALTER COLUMN ... TYPE ------------------------------------------------
 
 // alterColumnType is a parsed
 //
-//	ALTER TABLE [ONLY] table ALTER [COLUMN] column [SET DATA] TYPE type [USING expr]
+//	ALTER TABLE [ONLY] table ALTER [COLUMN] column [SET DATA] TYPE type [USING expr] [, ALTER [COLUMN] ...]
 //
-// PostgreSQL retypes the column in place; here the table is rebuilt with
-// the column's new type and the rows put back through the USING
-// expression.
+// PostgreSQL retypes the columns in place, in one pass over the table;
+// here the table is rebuilt once with every column's new type and the
+// rows put back through the USING expressions.
 type alterColumnType struct {
-	table    string
-	column   string
+	table   string
+	columns []retypedColumn
+}
+
+type retypedColumn struct {
+	name     string
 	typeSQL  string // the PG type as written
 	usingSQL string // the USING expression as written; "" for none
 }
@@ -194,44 +198,72 @@ func parseAlterColumnType(tokens []Token) (*alterColumnType, bool) {
 		return i < len(words) && isNamePart(words[i]) && strings.EqualFold(words[i].Raw, w)
 	}
 	table, i, ok := alterTableWords(words)
-	if !ok || !is(i, "ALTER") {
+	if !ok {
 		return nil, false
 	}
-	i++
-	if is(i, "COLUMN") {
-		i++
-	}
-	if i >= len(words) || !isNamePart(words[i]) {
-		return nil, false
-	}
-	d := &alterColumnType{table: table, column: foldIdent(words[i])}
-	i++
-	if is(i, "SET") && is(i+1, "DATA") {
-		i += 2
-	}
-	if !is(i, "TYPE") {
-		return nil, false
-	}
-	i++
-	j := i
-	for j < len(words) && !is(j, "USING") {
-		j++
-	}
-	if j == i {
-		return nil, false
-	}
-	// The type and the USING expression keep their original text, so a
-	// cast such as id::uuid reaches the translator as written.
-	typeEnd := len(tokens)
-	if j < len(words) {
-		if j+1 == len(words) {
+	d := &alterColumnType{table: table}
+	for {
+		if !is(i, "ALTER") {
 			return nil, false
 		}
-		typeEnd = pos[j]
-		d.usingSQL = strings.TrimSpace(Reassemble(tokens[pos[j+1]:]))
+		i++
+		if is(i, "COLUMN") {
+			i++
+		}
+		if i >= len(words) || !isNamePart(words[i]) {
+			return nil, false
+		}
+		col := retypedColumn{name: foldIdent(words[i])}
+		i++
+		if is(i, "SET") && is(i+1, "DATA") {
+			i += 2
+		}
+		if !is(i, "TYPE") {
+			return nil, false
+		}
+		i++
+		// The action ends at a top-level comma; the type and the USING
+		// expression keep their original text, so a cast such as
+		// id::uuid reaches the translator as written.
+		end, depth := i, 0
+		for ; end < len(words); end++ {
+			switch {
+			case words[end].Kind == TokParen && words[end].Value == "(":
+				depth++
+			case words[end].Kind == TokParen && words[end].Value == ")":
+				depth--
+			case words[end].Kind == TokComma && depth == 0:
+			}
+			if words[end].Kind == TokComma && depth == 0 {
+				break
+			}
+		}
+		j := i
+		for j < end && !is(j, "USING") {
+			j++
+		}
+		if j == i {
+			return nil, false
+		}
+		stop := len(tokens)
+		if end < len(words) {
+			stop = pos[end]
+		}
+		typeEnd := stop
+		if j < end {
+			if j+1 == end {
+				return nil, false
+			}
+			typeEnd = pos[j]
+			col.usingSQL = strings.TrimSpace(Reassemble(tokens[pos[j+1]:stop]))
+		}
+		col.typeSQL = strings.TrimSpace(Reassemble(tokens[pos[i]:typeEnd]))
+		d.columns = append(d.columns, col)
+		if end == len(words) {
+			return d, true
+		}
+		i = end + 1
 	}
-	d.typeSQL = strings.TrimSpace(Reassemble(tokens[pos[i]:typeEnd]))
-	return d, true
 }
 
 func (d *alterColumnType) exec(c *conn) (driver.Result, error) {
@@ -239,11 +271,18 @@ func (d *alterColumnType) exec(c *conn) (driver.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	createSQL, ok := retypeColumnSQL(t.sql, d)
-	if !ok {
-		return nil, pgErrorf("42703", `column "%s" of relation "%s" does not exist`, d.column, d.table)
+	createSQL := t.sql
+	exprs := map[string]string{}
+	for _, col := range d.columns {
+		var ok bool
+		if createSQL, ok = retypeColumnSQL(createSQL, col); !ok {
+			return nil, pgErrorf("42703", `column "%s" of relation "%s" does not exist`, col.name, d.table)
+		}
+		if col.usingSQL != "" {
+			exprs[strings.ToLower(col.name)] = col.usingSQL
+		}
 	}
-	copyBack, err := c.copyBackSQL(t, d.column, d.usingSQL)
+	copyBack, err := c.copyBackSQL(t, exprs)
 	if err != nil {
 		return nil, err
 	}
@@ -260,20 +299,20 @@ var columnConstraintKeywords = map[string]bool{
 	"GENERATED": true, "AS": true,
 }
 
-// retypeColumnSQL rewrites a stored CREATE TABLE statement with d.column's
-// type replaced by the translation of d.typeSQL. It reports false when the
+// retypeColumnSQL rewrites a stored CREATE TABLE statement with col's type
+// replaced by the translation of its typeSQL. It reports false when the
 // column is not defined.
-func retypeColumnSQL(tableSQL string, d *alterColumnType) (string, bool) {
+func retypeColumnSQL(tableSQL string, col retypedColumn) (string, bool) {
 	tokens := Tokenize(tableSQL)
 	for _, def := range tableDefinitions(tokens) {
-		if def.constraint || !strings.EqualFold(unquoteIdent(tokens[def.start].Raw), d.column) {
+		if def.constraint || !strings.EqualFold(unquoteIdent(tokens[def.start].Raw), col.name) {
 			continue
 		}
 		name := tokens[def.start]
 		start, end := columnTypeSpan(tokens, def.start+1)
 		newType := translateTypes(append([]Token{
 			{Kind: TokParen, Value: "(", Raw: "("}, name, {Kind: TokWhitespace, Value: " ", Raw: " "},
-		}, Tokenize(d.typeSQL)...), true)[3:]
+		}, Tokenize(col.typeSQL)...), true)[3:]
 		out := append([]Token{}, tokens[:start]...)
 		out = append(out, Token{Kind: TokWhitespace, Value: " ", Raw: " "})
 		out = append(out, newType...)
@@ -456,7 +495,7 @@ func (d *dropConstraint) exec(c *conn) (driver.Result, error) {
 		return nil, pgErrorf("42704", `constraint "%s" of relation "%s" does not exist`, d.name, d.table)
 	}
 	createSQL := Reassemble(append(append([]Token{}, tokens[:start]...), tokens[end:]...))
-	copyBack, err := c.copyBackSQL(t, "", "")
+	copyBack, err := c.copyBackSQL(t, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -665,7 +704,7 @@ func (d *addForeignKey) exec(c *conn) (driver.Result, error) {
 		closing++
 	}
 	createSQL := Reassemble(tokens[:closing]) + ", " + d.clause + Reassemble(tokens[closing:])
-	copyBack, err := c.copyBackSQL(t, "", "")
+	copyBack, err := c.copyBackSQL(t, nil)
 	if err != nil {
 		return nil, err
 	}

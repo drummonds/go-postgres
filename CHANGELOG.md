@@ -9,6 +9,7 @@
   The `/*pg:uuid*/` annotation is unchanged, so the catalogs still report
   `uuid`. Corpus: `testdata/corpus/uuid.sql`.
 - `ALTER TABLE ... ALTER COLUMN ... [SET DATA] TYPE type [USING expr]`,
+  one action or several on one table in one rebuild as PG rewrites once,
   which SQLite has no statement for: the driver rebuilds the table (rows
   to a temporary copy, drop, create with the new type, rows back through
   the `USING` expression, indexes and triggers recreated), inside a

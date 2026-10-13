@@ -119,7 +119,7 @@ without a parent fails where the transaction ends, as it would in PG.
 
 | Statement | Rewrite |
 |---|---|
-| `ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE type [USING expr]` | The column's type; rows come back through `expr` |
+| `ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE type [USING expr] [, ALTER COLUMN ...]` | The columns' types, in one rebuild; rows come back through each `expr` |
 | `ALTER TABLE t DROP CONSTRAINT [IF EXISTS] name` | The constraint named `name`, or the foreign key the catalogs call `name`, is removed (`42704` if neither) |
 | `ALTER TABLE t ADD CONSTRAINT name FOREIGN KEY (cols) REFERENCES p (cols) [actions]` | The constraint is appended as written |
 
