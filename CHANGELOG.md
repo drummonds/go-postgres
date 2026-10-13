@@ -27,6 +27,11 @@
   stands, so a migration drops the key, retypes both sides and adds it
   back, and the same SQL now runs on pglike.
 
+### Fixed
+- A cast on a qualified column, `ca.id::text`, is `CAST(ca.id AS TEXT)`;
+  it was `ca.CAST(id AS TEXT)`, a syntax error. Corpus: two cases in
+  `testdata/corpus/casts.sql`.
+
 ### Changed
 - Foreign key constraints are named in the catalogs as PG names an
   unnamed one, `<table>_<columns>_fkey`, instead of `<table>_fk_<id>`:

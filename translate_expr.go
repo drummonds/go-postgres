@@ -240,12 +240,16 @@ func extractLeftExpr(out []Token) []Token {
 		return out[j:]
 	}
 
-	// Simple: ident, string, number, keyword, param
-	switch last.Kind {
-	case TokIdent, TokString, TokNumber, TokKeyword, TokParam:
-		return out[len(out)-1:]
+	// A name, possibly qualified: alias.column or schema.table.column.
+	if last.Kind == TokIdent || last.Kind == TokKeyword {
+		j := len(out) - 1
+		for j >= 2 && out[j-1].Kind == TokDot && (out[j-2].Kind == TokIdent || out[j-2].Kind == TokKeyword) {
+			j -= 2
+		}
+		return out[j:]
 	}
 
+	// Simple: string, number, param
 	return out[len(out)-1:]
 }
 
