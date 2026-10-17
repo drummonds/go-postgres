@@ -553,7 +553,7 @@ func tryDollarQuote(runes []rune, i, n int) (tag []rune, end int, ok bool) {
 	searchStart := i + tagLen
 	for p := searchStart; p+tagLen <= n; p++ {
 		match := true
-		for q := 0; q < tagLen; q++ {
+		for q := range tagLen {
 			if runes[p+q] != tag[q] {
 				match = false
 				break

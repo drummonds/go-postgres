@@ -40,7 +40,7 @@ func registerPGFunctions(conn *sqlite3.Conn) error {
 			case sqlite3.BLOB:
 				data = arg[0].RawBlob()
 			default:
-				data = []byte(fmt.Sprint(arg[0].Text()))
+				data = fmt.Append(nil, arg[0].Text())
 			}
 			h := md5.Sum(data)
 			ctx.ResultText(hex.EncodeToString(h[:]))

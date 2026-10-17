@@ -13,7 +13,7 @@ import "strings"
 // ) SELECT ... FROM _gs [AS alias]
 func translateGenerateSeries(tokens []Token) []Token {
 	// Find: FROM generate_series(...)
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		if tokens[i].Kind != TokKeyword || tokens[i].Value != "FROM" {
 			continue
 		}

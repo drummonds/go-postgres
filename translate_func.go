@@ -50,7 +50,7 @@ func translateNow(tokens []Token) []Token {
 // CURRENT_TIMESTAMP -> datetime('now').
 func translateCurrentDatetime(tokens []Token) []Token {
 	var out []Token
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		t := tokens[i]
 		if t.Kind == TokKeyword {
 			switch t.Value {

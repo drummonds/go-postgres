@@ -171,8 +171,8 @@ func parseDSN(dsn string) string {
 
 	// PostgreSQL key=value format: host=localhost dbname=myapp
 	if strings.Contains(dsn, "=") && !strings.Contains(dsn, "/") {
-		parts := strings.Fields(dsn)
-		for _, part := range parts {
+		parts := strings.FieldsSeq(dsn)
+		for part := range parts {
 			kv := strings.SplitN(part, "=", 2)
 			if len(kv) == 2 && kv[0] == "dbname" {
 				return kv[1] + ".db"

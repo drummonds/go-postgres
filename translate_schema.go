@@ -39,7 +39,7 @@ func translateSchemas(tokens []Token) []Token {
 		}
 	}
 
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		t := tokens[i]
 		if t.Kind == TokWhitespace || t.Kind == TokComment {
 			continue

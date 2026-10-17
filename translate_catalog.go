@@ -44,7 +44,7 @@ func translateCatalog(tokens []Token) []Token {
 	prevNonTrivial := -1 // index into `out`, or -1
 	skipUntil := -1
 
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		if i <= skipUntil {
 			continue
 		}

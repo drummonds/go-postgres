@@ -672,8 +672,8 @@ func TestDriverExplain(t *testing.T) {
 		rowCount++
 		cols, _ := rows.Columns()
 		// Just verify we can scan the columns
-		vals := make([]interface{}, len(cols))
-		ptrs := make([]interface{}, len(cols))
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
 		for i := range vals {
 			ptrs[i] = &vals[i]
 		}

@@ -10,7 +10,7 @@ import "fmt"
 // DROP SEQUENCE name -> DELETE FROM _sequences WHERE name = 'name'
 func translateSequenceDDL(tokens []Token) []Token {
 	// Look for CREATE SEQUENCE or DROP SEQUENCE
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		if tokens[i].Kind != TokKeyword {
 			continue
 		}

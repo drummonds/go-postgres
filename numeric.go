@@ -39,8 +39,8 @@ func parseDecimal(s string) (numeric, error) {
 		exp, s = e, s[:i]
 	}
 	intPart, frac := s, ""
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		intPart, frac = s[:i], s[i+1:]
+	if before, after, ok := strings.Cut(s, "."); ok {
+		intPart, frac = before, after
 	}
 	digits := intPart + frac
 	if digits == "" || strings.Trim(digits, "0123456789") != "" {
@@ -174,10 +174,7 @@ func selectDivScale(a, b numeric) int {
 	rscale := minSigDigits - qweight*decDigits
 	rscale = maxInt(rscale, a.scale)
 	rscale = maxInt(rscale, b.scale)
-	rscale = maxInt(rscale, 0)
-	if rscale > maxDisplayScale {
-		rscale = maxDisplayScale
-	}
+	rscale = min(maxInt(rscale, 0), maxDisplayScale)
 	return rscale
 }
 
