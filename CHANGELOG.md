@@ -85,6 +85,10 @@
   NUMERIC storage is 19–41% slower on PostgreSQL and inexact on pglike.
   Roadmap story ticked.
 
+### Roadmap
+- NUMERIC aggregates: `sum`, `avg`, `min`, `max` over NUMERIC columns or `::numeric` expressions are exact
+- Research: NUMERIC balance views — practical; exact on both drivers, free on PostgreSQL, a few percent on pglike; native NUMERIC storage inexact on pglike
+
 ## [0.7.1] - 2026-10-04
 
  - Updating numeric research
@@ -116,6 +120,9 @@
   and decimal literals without a cast are unchanged (documented in the
   README). Corpus: `testdata/corpus/numeric.sql`.
 
+### Roadmap
+- NUMERIC arithmetic: `::numeric` expressions evaluate as exact decimals with PG's scale rules
+
 ## [0.6.0] - 2026-09-29
 
  - Adding metadata
@@ -142,6 +149,9 @@
   earlier versions report the SQLite type mapped to its PG name (`integer`,
   `text`, `real`, `bytea`). (#19)
 - `information_schema.columns` includes view columns, as in PostgreSQL.
+
+### Roadmap
+- Schema support by name-mangling (`crm.customers` → `"crm.customers"`); `ATTACH DATABASE` rejected, `search_path` deferred
 
 ## [0.5.13] - 2026-09-02
 
@@ -273,6 +283,9 @@
 - `current_schema()` returns `'public'` and `current_database()` returns `'main'` so PG-style catalog filters work unchanged.
 - Translator rewrites `information_schema.X`, `pg_catalog.X`, bare `pg_indexes`, and bare `pg_index_columns` to mangled view names (`_pglike_<schema>_<view>`) so the same SQL runs on pglike and real Postgres.
 
+### Roadmap
+- Catalog views: `information_schema` tables/columns/constraints and `pg_indexes`, installed per connection
+
 ## [0.5.3] - 2026-03-24
 
  - Fix soak metrics and add chart generation
@@ -346,6 +359,18 @@
 - `INTERVAL` literal parsing and datetime arithmetic
 - PG-compatible error codes wrapping SQLite errors
 - `EXPLAIN` output translation
+
+### Roadmap
+- `$$dollar-quoted$$` strings
+- `generate_series()` via recursive CTE rewriting
+- `to_char()` with full PG format string mapping
+- Regex operators (`~`, `~*`, `!~`, `!~*`) via custom functions
+- `SIMILAR TO` pattern translation
+- `NULLS FIRST` / `NULLS LAST` via CASE expression rewriting
+- `CREATE SEQUENCE` / `nextval()` / `currval()` emulation with a `_sequences` table
+- `INTERVAL` literal parsing and arithmetic
+- PG-style error codes in returned errors
+- `EXPLAIN` output formatted like PG
 
 ## [0.1.0] - 2026-02-07
 
