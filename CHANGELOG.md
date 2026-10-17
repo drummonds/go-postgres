@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+- ROADMAP.md is now `tp roadmap` epics of forge issues (#24–#31, #5–#7);
+  shipped items moved into `### Roadmap` lists under the versions that
+  finished them.
+- Release config follows the task-plus standard: `release_remote: origin`,
+  `.claude/` ignored, and `task fmt` runs `go fix` (applied once across the
+  library: `any`, range-over-int, `strings.Cut`/`FieldsSeq`, `min`).
+
 ## [0.10.0] - 2026-10-14
 
 ### Changed
