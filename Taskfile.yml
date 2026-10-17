@@ -6,6 +6,7 @@ tasks:
   fmt:
     desc: Format Go code
     cmds:
+      - go fix ./...
       - gofmt -w .
 
   vet:

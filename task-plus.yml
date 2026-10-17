@@ -4,6 +4,7 @@ remotes:
     token_env: BYTESTONE_FORGEJO_TOKEN
   - name: github
     forge: github
+release_remote: origin
 pages_build:
   - task docs:build
 pages_deploy:
