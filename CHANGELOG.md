@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-17
+
  - Roadmap as tp epics of forge issues; release config to the tp standard
 
 ### Changed
