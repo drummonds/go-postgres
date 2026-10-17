@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+ - Roadmap as tp epics of forge issues; release config to the tp standard
+
 ### Changed
 - ROADMAP.md is now `tp roadmap` epics of forge issues (#24–#31, #5–#7);
   shipped items moved into `### Roadmap` lists under the versions that
